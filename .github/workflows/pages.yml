@@ -1,0 +1,69 @@
+# Publishes the app to GitHub Pages.
+#
+# The repo holds more than the app — docs, Apps Script sources, tests, the dev server.
+# Rather than gitignoring those (which would drop them from version control, not just
+# from hosting), this copies only what the browser needs into a staging directory and
+# publishes that. The repo stays complete; the site stays minimal.
+#
+# There is no build step, so "building" here is literally copying files.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Lets you republish from the Actions tab without pushing a commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a queued run supersedes an older one rather than racing it.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage only the files the app needs
+        run: |
+          mkdir -p _site
+          cp index.html manifest.json sw.js _site/
+          cp -r src icons _site/
+          # Belt and braces. checkout only fetches tracked files, so a stray dev/build
+          # file should never be here — but a staging step that depends on .gitignore
+          # for correctness is one edit away from publishing junk.
+          find _site -name '*.ts' -o -name '*.tsx' -o -name '*.test.js' | xargs -r rm -f
+          # Tells Pages to serve files starting with _ or . unchanged.
+          touch _site/.nojekyll
+          echo "staged:"; find _site -type f | sort
+
+      - name: Fail if a credential ever reaches the site
+        run: |
+          # Cheap insurance. The secret and deployment id live in localStorage per
+          # device and must never be in a published file.
+          if grep -rIlE 'AKfycb[A-Za-z0-9_-]{20,}|SHARED_SECRET *= *.[^C]' _site; then
+            echo "::error::a credential-looking string reached the published site"
+            exit 1
+          fi
+          echo "no credentials in the staged site"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

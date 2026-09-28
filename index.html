@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Дошка завдань</title>
+
+    <link rel="manifest" href="./manifest.json" />
+    <meta name="theme-color" content="#fbfbf9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16171a" media="(prefers-color-scheme: dark)" />
+
+    <!-- iPadOS and iOS ignore the manifest icons for Add to Home Screen. -->
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Завдання" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <!-- No build step: the browser loads the ES modules directly. -->
+    <link rel="stylesheet" href="./src/design/tokens.css" />
+    <link rel="stylesheet" href="./src/design/app.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

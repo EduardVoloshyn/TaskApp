@@ -1,0 +1,99 @@
+/*
+ * Design tokens. Calm and minimal: paper-like ground, hairline rules, soft tints
+ * rather than saturated fills.
+ *
+ * Colour is only ever referenced through a token. A hex value anywhere outside this
+ * file is a bug.
+ *
+ * Light is defined on :root and dark overrides only what changes, so there is never a
+ * colour whose sole definition lives inside a media query.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* ground and ink */
+  --bg: #fbfbf9;
+  --surface: #ffffff;
+  --ink: #22252a;
+  --ink-quiet: #6b7280;
+  --ink-faint: #9ca3af;
+
+  /* hairlines — separation comes from space, so these stay barely there */
+  --rule: #e8e6e1;
+  --rule-strong: #d6d3cc;
+
+  /* accents */
+  --today: #f4f2ec;
+  --overdue: #c2564b;
+
+  /* status/task palette: soft tint, slightly firmer edge, readable ink */
+  --slate-bg: #eef0f2;  --slate-line: #cdd3d8;  --slate-ink: #3c4650;
+  --blue-bg: #e8eefc;   --blue-line: #c4d3f5;   --blue-ink: #2a4a86;
+  --red-bg: #fcecea;    --red-line: #f3cec9;    --red-ink: #8f342c;
+  --amber-bg: #fbf1e2;  --amber-line: #f0dcbc;  --amber-ink: #7d5720;
+  --green-bg: #e9f3ea;  --green-line: #c7e0cb;  --green-ink: #2f6136;
+  --violet-bg: #f0ecfa; --violet-line: #d7ccf0; --violet-ink: #4f3d8c;
+  --teal-bg: #e6f2f2;   --teal-line: #c0dedd;   --teal-ink: #245d5c;
+  --rose-bg: #fbecf2;   --rose-line: #f2ccdb;   --rose-ink: #8a3358;
+
+  /* type */
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --text-xs: 0.6875rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.125rem;
+
+  /* rhythm */
+  --gap-1: 0.25rem;
+  --gap-2: 0.5rem;
+  --gap-3: 0.75rem;
+  --gap-4: 1rem;
+  --gap-6: 1.5rem;
+  --radius: 7px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #16171a;
+    --surface: #1c1e22;
+    --ink: #e6e8ea;
+    --ink-quiet: #9ba1a9;
+    --ink-faint: #6d747c;
+
+    --rule: #2a2d33;
+    --rule-strong: #3a3e46;
+
+    --today: #202329;
+    --overdue: #e0776a;
+
+    --slate-bg: #23262b;  --slate-line: #343a42;  --slate-ink: #c6cdd6;
+    --blue-bg: #1c2436;   --blue-line: #2e3f5e;   --blue-ink: #a8c4f0;
+    --red-bg: #32201f;    --red-line: #52302c;    --red-ink: #f0b0a8;
+    --amber-bg: #322718;  --amber-line: #4d3b21;  --amber-ink: #efc98c;
+    --green-bg: #1c2b21;  --green-line: #2c4433;  --green-ink: #a3d3ae;
+    --violet-bg: #262038; --violet-line: #3b3157; --violet-ink: #c3b2ee;
+    --teal-bg: #1a2b2b;   --teal-line: #2a4444;   --teal-ink: #9fd0cf;
+    --rose-bg: #32202a;   --rose-line: #4e3040;   --rose-ink: #f0aec6;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #16171a;
+  --surface: #1c1e22;
+  --ink: #e6e8ea;
+  --ink-quiet: #9ba1a9;
+  --ink-faint: #6d747c;
+  --rule: #2a2d33;
+  --rule-strong: #3a3e46;
+  --today: #202329;
+  --overdue: #e0776a;
+  --slate-bg: #23262b;  --slate-line: #343a42;  --slate-ink: #c6cdd6;
+  --blue-bg: #1c2436;   --blue-line: #2e3f5e;   --blue-ink: #a8c4f0;
+  --red-bg: #32201f;    --red-line: #52302c;    --red-ink: #f0b0a8;
+  --amber-bg: #322718;  --amber-line: #4d3b21;  --amber-ink: #efc98c;
+  --green-bg: #1c2b21;  --green-line: #2c4433;  --green-ink: #a3d3ae;
+  --violet-bg: #262038; --violet-line: #3b3157; --violet-ink: #c3b2ee;
+  --teal-bg: #1a2b2b;   --teal-line: #2a4444;   --teal-ink: #9fd0cf;
+  --rose-bg: #32202a;   --rose-line: #4e3040;   --rose-ink: #f0aec6;
+}

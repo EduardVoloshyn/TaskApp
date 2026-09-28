@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>TaskApp tests</title>
+    <link rel="stylesheet" href="../src/design/tokens.css" />
+    <style>
+      body { margin: 0; padding: 1.5rem 1rem; background: var(--bg); color: var(--ink);
+             font-family: var(--font); font-size: var(--text-sm); }
+      main { max-width: 48rem; margin: 0 auto; }
+      h1 { font-size: var(--text-lg); margin: 0 0 1rem; }
+      .row { display: flex; gap: .6rem; padding: .3rem 0; border-bottom: 1px solid var(--rule); }
+      .tag { font-size: var(--text-xs); font-weight: 600; padding: .05rem .4rem;
+             border-radius: 4px; height: 1.2rem; }
+      .pass { color: var(--green-ink); background: var(--green-bg); }
+      .fail { color: var(--red-ink); background: var(--red-bg); }
+      .why { color: var(--red-ink); font-size: var(--text-xs); }
+      .total { margin-top: 1rem; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <main><h1>TaskApp — tests</h1><div id="out"></div></main>
+    <script type="module">
+      import './tasks.test.js'
+      import './refs.test.js'
+      import './version.test.js'
+      import './single-flight.test.js'
+      import './render.test.js'
+      import './boot.test.js'
+      import { run } from './harness.js'
+
+      const { results, passed, failed } = await run()
+      const out = document.getElementById('out')
+
+      for (const r of results) {
+        const row = document.createElement('div')
+        row.className = 'row'
+        const tag = document.createElement('span')
+        tag.className = `tag ${r.passed ? 'pass' : 'fail'}`
+        tag.textContent = r.passed ? 'PASS' : 'FAIL'
+        const name = document.createElement('span')
+        name.textContent = r.name
+        row.append(tag, name)
+        if (!r.passed) {
+          const why = document.createElement('span')
+          why.className = 'why'
+          why.textContent = r.message
+          row.append(why)
+        }
+        out.append(row)
+      }
+
+      const total = document.createElement('div')
+      total.className = 'total'
+      total.textContent = failed === 0 ? `ALL PASS — ${passed} tests` : `${failed} FAILED, ${passed} passed`
+      out.append(total)
+    </script>
+  </body>
+</html>

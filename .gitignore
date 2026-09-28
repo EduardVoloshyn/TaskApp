@@ -1,0 +1,45 @@
+# This repo will be PUBLIC — GitHub Pages' free tier requires it, same trade as ScheduleApp.
+# Everything here is either a secret, a local artefact, or a build tool we deliberately don't use.
+
+# ── credentials ───────────────────────────────────────────────────────────────
+# The deployment id and secret are entered per device and live in localStorage.
+# Nothing of the sort belongs in a repo, least of all a public one.
+*creds*
+*Creds*
+*CREDS*
+*secret*
+*Secret*
+.env
+.env.*
+.clasprc.json          # clasp's Google credentials, if clasp is ever used
+secrets.json
+
+# ── local machine ─────────────────────────────────────────────────────────────
+.claude/settings.local.json
+.DS_Store
+*.log
+
+# ── no build toolchain, on purpose ─────────────────────────────────────────────
+# Plain ES modules, zero dependencies. These guards stop a toolchain being
+# reintroduced by habit rather than by decision.
+*.ts
+*.tsx
+package.json
+package-lock.json
+tsconfig*.json
+vite.config.*
+node_modules/
+dist/
+.vite/
+
+# ── project notes, kept out of the public repo ────────────────────────────────
+# Requirements, ADRs, the deploy guide and the TODO. Owner's decision: the repo is
+# public, and these are not for publication.
+docs/
+CLAUDE.md
+REQUIREMENTS.md
+apps-script/README.md
+
+# `apps-script/*.gs` stays tracked — it is source, it holds no secret (SHARED_SECRET is
+# a placeholder there), and losing it would mean losing the backend. GitHub Pages does
+# not serve it: .github/workflows/pages.yml stages only the app files.
