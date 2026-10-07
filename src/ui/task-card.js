@@ -1,5 +1,5 @@
 import { PALETTE } from '../model/refs.js'
-import { statusProgress } from '../model/tasks.js'
+import { isTaskCompleted, statusProgress } from '../model/tasks.js'
 import { append, el } from './dom.js'
 
 /**
@@ -16,10 +16,14 @@ export function taskCard(task, { statuses = [], owner, editing = false, todayIso
   // trusting an unknown token: a hand-typed colour in the Sheet must not produce an
   // unstyled card.
   const colour = PALETTE.includes(task.color) ? task.color : 'slate'
+  const completed = isTaskCompleted(task, statuses)
 
-  const classes = ['task-card', `task-card--${colour}`, editing ? 'task-card--editable' : '']
-    .filter(Boolean)
-    .join(' ')
+  const classes = [
+    'task-card',
+    `task-card--${colour}`,
+    editing ? 'task-card--editable' : '',
+    completed ? 'task-card--completed' : '',
+  ].filter(Boolean).join(' ')
 
   const node = el('div', classes)
   node.dataset.taskId = task.id
@@ -32,8 +36,13 @@ export function taskCard(task, { statuses = [], owner, editing = false, todayIso
     append(heading, el('span', 'task-card__icon', undefined, task.icon))
     heading.appendChild(document.createTextNode(' '))
   }
-  append(heading, el('span', 'task-card__name', undefined, task.name))
+  append(heading, el('span', `task-card__name${completed ? ' task-card__name--done' : ''}`, undefined, task.name))
   append(node, heading)
+
+  // Completed: heading only, struck through and truncated — a glanceable "done" row.
+  // Colour/editing/click behaviour above are untouched; only the content below the
+  // heading collapses.
+  if (completed) return node
 
   const bar = statusBar(statuses, task)
   const ownerEl = owner && el('div', 'task-card__meta', undefined, owner.name)

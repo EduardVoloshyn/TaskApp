@@ -200,6 +200,16 @@ body {
   line-height: 1.25;
 }
 
+/* Completed: a single glanceable line, not a readable multi-line card — truncate
+   instead of wrapping (scoped here so normal cards keep wrapping as before). */
+.task-card--completed .task-card__heading {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-card__name--done { text-decoration: line-through; }
+
 .task-card__icon { font-style: normal; }
 
 .task-card__meta,
@@ -477,7 +487,8 @@ body {
 .ref-list__pick--teal   { border-color: var(--teal-line);   background: var(--teal-bg);   color: var(--teal-ink); }
 .ref-list__pick--rose   { border-color: var(--rose-line);   background: var(--rose-bg);   color: var(--rose-ink); }
 
-.ref-list__edit {
+.ref-list__edit,
+.ref-list__delete {
   flex: none;
   padding: 0.45rem 0.6rem;
 }
@@ -536,6 +547,15 @@ body {
 }
 
 .chip-toggle--all { border-style: solid; color: var(--ink-quiet); }
+
+/* The global "show completed" toggle's active state — deliberately its own modifier,
+   not .chip-toggle--off (that means "this item is hidden" for the owner/status chips). */
+.chip-toggle--on {
+  border-style: solid;
+  color: var(--green-ink);
+  background: var(--green-bg);
+  border-color: var(--green-line);
+}
 
 /* =================================================================== about ==== */
 

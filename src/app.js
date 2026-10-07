@@ -3,6 +3,7 @@ import {
   deleteTask,
   duplicateTask,
   findTask,
+  isTaskCompleted,
   newId,
   partitionUsable,
   updateTask,
@@ -98,6 +99,9 @@ function withDefaults(prefs) {
     theme: prefs.theme ?? 'system',
     hiddenOwners: prefs.hiddenOwners ?? [],
     hiddenStatuses: prefs.hiddenStatuses ?? [],
+    // Off by default: a completed row vanishing from the board the moment it's
+    // finished is the whole point; opting back in is deliberate, per device.
+    showCompleted: prefs.showCompleted ?? false,
   }
 }
 
@@ -133,11 +137,12 @@ function hiddenOwnerSet() { return new Set(state.prefs.hiddenOwners) }
 function hiddenStatusSet() { return new Set(state.prefs.hiddenStatuses) }
 
 /** A task with no owner/status is never hidden by a filter — only a known id can be. */
-function visibleTasks(tasks, hiddenOwners, hiddenStatuses) {
+function visibleTasks(tasks, hiddenOwners, hiddenStatuses, statusList, showCompleted) {
   return tasks.filter(
     (t) =>
       (!t.owner_id || !hiddenOwners.has(t.owner_id)) &&
-      (!t.status_id || !hiddenStatuses.has(t.status_id)),
+      (!t.status_id || !hiddenStatuses.has(t.status_id)) &&
+      (showCompleted || !isTaskCompleted(t, statusList)),
   )
 }
 
@@ -155,6 +160,12 @@ function setHiddenOwners(hidden) {
 
 function setHiddenStatuses(hidden) {
   const prefs = { ...state.prefs, hiddenStatuses: [...hidden] }
+  savePrefs(prefs)
+  setState({ prefs })
+}
+
+function setShowCompleted(showCompleted) {
+  const prefs = { ...state.prefs, showCompleted }
   savePrefs(prefs)
   setState({ prefs })
 }
@@ -338,6 +349,11 @@ function openRefPanel(kind) {
         applyPatch({ [kind]: moveRef(existing, item.id, direction) })
         openRefPanel(kind)
       },
+      onDelete: (item) => {
+        const existing = state.snapshot?.[kind] ?? []
+        applyPatch({ [kind]: deleteRef(existing, item.id) })
+        openRefPanel(kind)
+      },
       onClose: () => render(),
     }),
   )
@@ -402,6 +418,30 @@ function openRefSheet(kind, item, { isNew }) {
 
 /* ----------------------------------------------------------------- toolbar ---- */
 
+function completedCount(tasks, statusList) {
+  return tasks.filter((t) => isTaskCompleted(t, statusList)).length
+}
+
+/**
+ * A single global on/off toggle, not an N-item list — doesn't go through filterBar().
+ * Deliberately its own modifier (.chip-toggle--on), not .chip-toggle--off: that class
+ * means "this item is hidden" for the owner/status chips, and reusing it here would
+ * make every exact chip-toggle--off count elsewhere ambiguous about which chip it means.
+ */
+function completedToggleChip(on, count) {
+  const chip = el('button', `chip-toggle${on ? ' chip-toggle--on' : ''}`)
+  chip.type = 'button'
+  chip.setAttribute('aria-pressed', String(on))
+  chip.title = on ? 'Сховати завершені завдання' : 'Показати завершені завдання'
+  chip.addEventListener('click', () => setShowCompleted(!on))
+  append(
+    chip,
+    el('span', 'chip-toggle__name', undefined, 'Показати завершено'),
+    el('span', 'chip-toggle__count', undefined, String(count)),
+  )
+  return chip
+}
+
 function toolbar() {
   const bar = el('div', 'app__bar')
   const editable = state.prefs.editingEnabled
@@ -426,14 +466,19 @@ function toolbar() {
     onToggle: (id) => setHiddenStatuses(toggleHidden(hiddenStatuses, id)),
     onShowAll: () => setHiddenStatuses([]),
   })
-  // Only between the two groups when both actually render — no dangling line before an
-  // empty one.
-  const filters = append(
-    el('div', 'app__filters'),
-    ownerBar,
-    ownerBar && statusBar && el('span', 'app__divider'),
-    statusBar,
+  const completedChip = append(
+    el('div', 'chips-bar'),
+    completedToggleChip(state.prefs.showCompleted, completedCount(tasks, statuses())),
   )
+
+  // A divider only between groups that actually render — no dangling line before the
+  // first one or after the last.
+  const filters = el('div', 'app__filters')
+  for (const group of [ownerBar, statusBar, completedChip]) {
+    if (!group) continue
+    if (filters.children.length > 0) append(filters, el('span', 'app__divider'))
+    append(filters, group)
+  }
 
   const refreshButton = button(ICON.reload, 'Оновити', () => void refresh())
   refreshButton.disabled = state.sync.status === 'loading' || !state.credentials
@@ -542,7 +587,7 @@ function render() {
   const hiddenOwners = hiddenOwnerSet()
   const hiddenStatuses = hiddenStatusSet()
   const tasks = displayTasks()
-  const filtered = visibleTasks(tasks, hiddenOwners, hiddenStatuses)
+  const filtered = visibleTasks(tasks, hiddenOwners, hiddenStatuses, statuses(), state.prefs.showCompleted)
   const editable = state.prefs.editingEnabled && Boolean(state.snapshot)
 
   const app = el('div', 'app')

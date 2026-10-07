@@ -205,6 +205,9 @@ export function installDom(options = {}) {
   }
 
   globalThis.matchMedia = () => ({ matches: false })
+  // Defaults to confirming — a test that needs to simulate Cancel sets
+  // `globalThis.confirm = () => false` directly before dispatching the click.
+  globalThis.confirm = options.confirm ?? (() => true)
   globalThis.requestAnimationFrame = (fn) => fn()
   globalThis.cancelAnimationFrame = () => {}
   if (typeof globalThis.setTimeout !== 'function') globalThis.setTimeout = () => 0

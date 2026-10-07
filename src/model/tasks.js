@@ -109,6 +109,20 @@ export function statusProgress(statuses, task) {
   return statuses.map((s, i) => ({ ...s, filled: currentIndex >= 0 && i <= currentIndex }))
 }
 
+/**
+ * A task counts as "completed" when its status is the LAST entry in the Settings
+ * Statuses list — purely derived from existing data, nothing new to store or migrate.
+ * Mirrors statusProgress's rule that list order is what "last stage" means.
+ *
+ * @param {Object} task
+ * @param {ReadonlyArray<{id: string}>} statuses
+ * @returns {boolean}
+ */
+export function isTaskCompleted(task, statuses) {
+  if (!task || !task.status_id || statuses.length === 0) return false
+  return task.status_id === statuses.at(-1).id
+}
+
 /** Row/column ids used for tasks whose reference has been deleted or was never set. */
 export const ORPHAN_CATEGORY_ID = ''
 export const ORPHAN_PRIORITY_ID = ''

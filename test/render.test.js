@@ -52,6 +52,31 @@ test('taskCard leaves every status box empty when the task has no status', () =>
   eq(filled.length, 0)
 })
 
+test('taskCard collapses to a single struck-through line when the task is completed', () => {
+  const statuses = [
+    { id: 's1', name: 'To do', color: 'slate' },
+    { id: 's2', name: 'Done', color: 'green' },
+  ]
+  const task = createTask({ id: 't1', name: 'Buy milk', status_id: 's2', due_date: '2020-01-01', notes: 'x' })
+  const node = taskCard(task, { statuses, owner: { name: 'X' }, todayIso: '2026-01-01' })
+  ok(node.className.includes('task-card--completed'), `got "${node.className}"`)
+  ok(node.find('task-card__name').className.includes('task-card__name--done'))
+  eq(node.find('task-card__status-row'), null)
+  eq(node.find('task-card__status-bar'), null)
+  eq(node.find('task-card__notes'), null)
+})
+
+test('taskCard does not collapse a task on a non-last status', () => {
+  const statuses = [
+    { id: 's1', name: 'To do', color: 'slate' },
+    { id: 's2', name: 'Done', color: 'green' },
+  ]
+  const task = createTask({ id: 't1', name: 'T', status_id: 's1' })
+  const node = taskCard(task, { statuses, todayIso: '2026-01-01' })
+  eq(node.className.includes('task-card--completed'), false)
+  ok(node.find('task-card__status-bar'))
+})
+
 test('taskCard marks a past due date as overdue', () => {
   const task = createTask({ id: 't1', name: 'T', due_date: '2020-01-01' })
   const node = taskCard(task, { todayIso: '2026-01-01' })
@@ -185,6 +210,39 @@ test('refPanel disables ▲ on the first row and ▼ on the last, and reports th
 
   moves(rows[0])[1].dispatch('click', {}) // row A, move down
   eq(reordered, 'a:down')
+})
+
+test('refPanel delete icon asks for confirmation, then deletes', () => {
+  let deleted = null
+  globalThis.confirm = () => true
+  const dialog = refPanel({
+    title: 'Категорії',
+    items: [{ id: 'c1', name: 'Робота' }],
+    emptyHint: 'x',
+    renderRow: () => ({ nodes: [] }),
+    onEdit: () => {},
+    onCreate: () => {},
+    onDelete: (item) => { deleted = item.id },
+  })
+  dialog.find('ref-list__delete').dispatch('click', {})
+  eq(deleted, 'c1')
+})
+
+test('refPanel delete icon does nothing when confirmation is declined', () => {
+  let deleted = null
+  globalThis.confirm = () => false
+  const dialog = refPanel({
+    title: 'Категорії',
+    items: [{ id: 'c1', name: 'Робота' }],
+    emptyHint: 'x',
+    renderRow: () => ({ nodes: [] }),
+    onEdit: () => {},
+    onCreate: () => {},
+    onDelete: (item) => { deleted = item.id },
+  })
+  dialog.find('ref-list__delete').dispatch('click', {})
+  eq(deleted, null)
+  globalThis.confirm = () => true // restore the default for every test after this one
 })
 
 /* ---------------------------------------------------------------- task-dialog ---- */

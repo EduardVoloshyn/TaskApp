@@ -7,6 +7,7 @@ import {
   deleteTask,
   duplicateTask,
   findTask,
+  isTaskCompleted,
   isUsableTask,
   partitionUsable,
   statusProgress,
@@ -84,6 +85,33 @@ test('statusProgress fills nothing when the task names a deleted status', () => 
   const task = createTask({ id: 't1', name: 'T', status_id: 'gone' })
   const progress = statusProgress(stages, task)
   eq(progress.map((s) => s.filled), [false, false, false])
+})
+
+/* ------------------------------------------------------------- isTaskCompleted ---- */
+
+test('isTaskCompleted is false when there are no statuses', () => {
+  const task = createTask({ id: 't1', name: 'T', status_id: 's1' })
+  eq(isTaskCompleted(task, []), false)
+})
+
+test('isTaskCompleted is true when the task matches the last status', () => {
+  const task = createTask({ id: 't1', name: 'T', status_id: 's3' })
+  eq(isTaskCompleted(task, stages), true)
+})
+
+test('isTaskCompleted is false when the task matches a non-last status', () => {
+  const task = createTask({ id: 't1', name: 'T', status_id: 's2' })
+  eq(isTaskCompleted(task, stages), false)
+})
+
+test('isTaskCompleted is false when the task has no status', () => {
+  const task = createTask({ id: 't1', name: 'T' })
+  eq(isTaskCompleted(task, stages), false)
+})
+
+test('isTaskCompleted is false when the task names a deleted/unknown status', () => {
+  const task = createTask({ id: 't1', name: 'T', status_id: 'gone' })
+  eq(isTaskCompleted(task, stages), false)
 })
 
 test('isUsableTask requires an id and a non-empty name', () => {

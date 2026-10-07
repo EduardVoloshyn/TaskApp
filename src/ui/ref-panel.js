@@ -20,10 +20,11 @@ import { ICON, actionButton } from './buttons.js'
  *           onEdit: (item: Object) => void,
  *           onCreate: () => void,
  *           onReorder?: (item: Object, direction: 'up'|'down') => void,
+ *           onDelete?: (item: Object) => void,
  *           onClose?: () => void }} props
  * @returns {HTMLDialogElement}
  */
-export function refPanel({ title, items, emptyHint, renderRow, onEdit, onCreate, onReorder, onClose }) {
+export function refPanel({ title, items, emptyHint, renderRow, onEdit, onCreate, onReorder, onDelete, onClose }) {
   const dialog = /** @type {HTMLDialogElement} */ (el('dialog', 'sheet'))
   const body = el('div', 'sheet__form')
 
@@ -73,7 +74,19 @@ export function refPanel({ title, items, emptyHint, renderRow, onEdit, onCreate,
       dialog.close()
     })
 
-    append(row, append(el('div', 'ref-list__moves'), up, down), pick, edit)
+    // A direct delete, not just reachable via the item editor — confirm() is the only
+    // friction left against an accidental click, so it stays even though the edit-sheet
+    // delete button has none (that one's already behind a deliberate navigation step).
+    const del = el('button', 'app__button app__button--danger ref-list__delete', undefined, ICON.delete)
+    del.type = 'button'
+    del.title = `Видалити «${item.name}»`
+    del.addEventListener('click', () => {
+      if (!confirm(`Видалити «${item.name}»?`)) return
+      onDelete?.(item)
+      dialog.close()
+    })
+
+    append(row, append(el('div', 'ref-list__moves'), up, down), pick, edit, del)
     append(list, row)
   })
   append(body, list)

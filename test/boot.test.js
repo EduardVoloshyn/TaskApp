@@ -19,8 +19,12 @@ const store = {
     tasks: [
       { id: 'a', name: 'Написати звіт', status_id: 's1', category_id: 'c1', priority_id: 'p1', owner_id: 'o1', due_date: '', notes: '' },
       { id: 'b', name: 'Полити квіти', status_id: '', category_id: '', priority_id: '', owner_id: '', due_date: '', notes: '' },
+      { id: 'c', name: 'Завершений звіт', status_id: 's2', category_id: '', priority_id: '', owner_id: '', due_date: '', notes: '' },
     ],
-    statuses: [{ id: 's1', name: 'У роботі', color: 'blue', icon: '🔧' }],
+    statuses: [
+      { id: 's1', name: 'У роботі', color: 'blue', icon: '🔧' },
+      { id: 's2', name: 'Завершено', color: 'green', icon: '✅' },
+    ],
     categories: [{ id: 'c1', name: 'Робота' }],
     priorities: [{ id: 'p1', name: 'Високий' }],
     owners: [{ id: 'o1', name: 'Едуард' }],
@@ -107,4 +111,32 @@ test('the toolbar ends with the ? button, in view-only and editing alike', () =>
   const pencil = root.findAll('app__button').find((b) => b.textContent === '✏️')
   if (pencil) pencil.dispatch('click', {})
   eq(labels().at(-1), '?', 'the ? moved when editing was enabled')
+})
+
+/* -------------------------------------------------------------- completed ---- */
+
+test('a completed task is hidden from the board by default', () => {
+  eq(root.findAll('task-card').some((c) => c.textContent.includes('Завершений звіт')), false)
+})
+
+test('the "Показати завершено" chip renders, off by default', () => {
+  const chip = root.findAll('chip-toggle').find((c) => c.textContent.includes('Показати завершено'))
+  ok(chip, 'completed-toggle chip missing')
+  eq(chip.className.includes('chip-toggle--on'), false)
+})
+
+test('turning the completed toggle on reveals the completed task, collapsed', () => {
+  const chip = root.findAll('chip-toggle').find((c) => c.textContent.includes('Показати завершено'))
+  chip.dispatch('click', {})
+
+  const card = root.findAll('task-card').find((c) => c.textContent.includes('Завершений звіт'))
+  ok(card, 'completed task did not appear after toggling on')
+  ok(card.className.includes('task-card--completed'))
+  eq(card.find('task-card__status-row'), null)
+})
+
+test('turning the completed toggle back off hides it again', () => {
+  const chip = root.findAll('chip-toggle').find((c) => c.textContent.includes('Показати завершено'))
+  chip.dispatch('click', {})
+  eq(root.findAll('task-card').some((c) => c.textContent.includes('Завершений звіт')), false)
 })
