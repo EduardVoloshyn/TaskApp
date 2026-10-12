@@ -56,6 +56,14 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* A fetch or a write in flight — loud on purpose: editing is locked the whole time
+   (see syncing() in app.js), and this is exactly when the user is most likely to try
+   tapping around anyway. */
+.app__status--loading {
+  color: var(--red-ink);
+  font-weight: 700;
+}
+
 .app__button {
   display: inline-flex;
   align-items: center;
@@ -224,8 +232,6 @@ body {
   font-weight: 600;
   opacity: 1;
 }
-
-.task-card__notes { font-size: var(--text-xs); opacity: 0.7; }
 
 /* Progress bar and owner share the left side of one line; the due date is pushed to
    the far right of that same line regardless of which of the other two are present
@@ -518,7 +524,7 @@ body {
 
 .chip-toggle {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.3rem;
   font: inherit;
   font-size: var(--text-xs);
@@ -544,6 +550,24 @@ body {
   font-size: var(--text-xs);
   color: var(--ink-quiet);
   font-variant-numeric: tabular-nums;
+}
+
+/* An enabled chip's count gets a small soft-green badge, so which filters are actively
+   showing something reads at a glance across the whole row. "Active" is set explicitly
+   per chip (not just "not --off") since the completed-toggle's on/off polarity is the
+   reverse of the owner/status chips' — see completedToggleChip's own comment. */
+.chip-toggle__count--active {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.25rem;
+  border-radius: 4px;
+  background: var(--green-bg);
+  border: 1px solid var(--green-line);
+  color: var(--green-ink);
+  font-weight: 700;
 }
 
 .chip-toggle--all { border-style: solid; color: var(--ink-quiet); }
@@ -614,6 +638,20 @@ body {
 @keyframes pulse {
   0%, 100% { opacity: 0.25; }
   50% { opacity: 1; }
+}
+
+/* Up to date — the opposite signal from the loading warning above: calm, not urgent. */
+.app__status--fresh { color: var(--green-ink); }
+
+.app__status--fresh::after {
+  content: '';
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-left: 0.4rem;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
 }
 
 @media (prefers-reduced-motion: reduce) {

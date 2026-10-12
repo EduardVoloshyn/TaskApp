@@ -33,7 +33,7 @@ export function filterBar({ items, hidden, counts, onToggle, onShowAll }) {
     append(
       chip,
       el('span', 'chip-toggle__name', undefined, item.name),
-      el('span', 'chip-toggle__count', undefined, String(count)),
+      el('span', `chip-toggle__count${off ? '' : ' chip-toggle__count--active'}`, undefined, String(count)),
     )
     append(bar, chip)
   }

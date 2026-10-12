@@ -63,7 +63,6 @@ test('taskCard collapses to a single struck-through line when the task is comple
   ok(node.find('task-card__name').className.includes('task-card__name--done'))
   eq(node.find('task-card__status-row'), null)
   eq(node.find('task-card__status-bar'), null)
-  eq(node.find('task-card__notes'), null)
 })
 
 test('taskCard does not collapse a task on a non-last status', () => {
@@ -87,13 +86,6 @@ test('taskCard does not mark a future due date as overdue', () => {
   const task = createTask({ id: 't1', name: 'T', due_date: '2099-01-01' })
   const node = taskCard(task, { todayIso: '2026-01-01' })
   eq(node.find('task-card__due--overdue'), null)
-})
-
-test('taskCard shows a notes indicator only when notes are present', () => {
-  const withNotes = taskCard(createTask({ id: 't1', name: 'T', notes: 'hi' }), { todayIso: '2026-01-01' })
-  const without = taskCard(createTask({ id: 't2', name: 'T' }), { todayIso: '2026-01-01' })
-  ok(withNotes.find('task-card__notes'))
-  eq(without.find('task-card__notes'), null)
 })
 
 /* -------------------------------------------------------------------- board ---- */

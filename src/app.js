@@ -437,7 +437,7 @@ function completedToggleChip(on, count) {
   append(
     chip,
     el('span', 'chip-toggle__name', undefined, 'Показати завершено'),
-    el('span', 'chip-toggle__count', undefined, String(count)),
+    el('span', `chip-toggle__count${on ? ' chip-toggle__count--active' : ''}`, undefined, String(count)),
   )
   return chip
 }
@@ -445,6 +445,9 @@ function completedToggleChip(on, count) {
 function toolbar() {
   const bar = el('div', 'app__bar')
   const editable = state.prefs.editingEnabled
+  // While a write is pending or in flight, every control that could start a new edit
+  // or discard this one (refresh) is locked — see syncing()'s doc comment for why.
+  const locked = syncing()
 
   // Filters live in the same row as the title (not a dedicated row below) so the board
   // gets that vertical space back; on a narrow viewport app__bar's own flex-wrap just
@@ -480,8 +483,12 @@ function toolbar() {
     append(filters, group)
   }
 
-  const refreshButton = button(ICON.reload, 'Оновити', () => void refresh())
-  refreshButton.disabled = state.sync.status === 'loading' || !state.credentials
+  const refreshButton = button(
+    ICON.reload,
+    locked ? 'Зачекайте, поки зміни збережуться' : 'Оновити',
+    () => { if (!locked) void refresh() },
+  )
+  refreshButton.disabled = locked || !state.credentials
 
   const editButton = button(
     editable ? '🔒' : '✏️',
@@ -490,33 +497,47 @@ function toolbar() {
   )
   editButton.disabled = !state.snapshot
 
-  const addButton = actionButton({ icon: ICON.add, label: 'Завдання', kind: 'accent', onClick: onAddTask })
-  addButton.disabled = !state.snapshot
+  const addButton = actionButton({
+    icon: ICON.add,
+    label: 'Завдання',
+    kind: 'accent',
+    onClick: () => { if (!locked) onAddTask() },
+  })
+  addButton.disabled = !state.snapshot || locked
+  if (locked) addButton.title = 'Зачекайте, поки зміни збережуться'
 
-  const settingsButton = button('⚙', 'Налаштування', () =>
-    openDialog(
-      settingsMenu({
-        prefs: state.prefs,
-        onChange: (patch) => {
-          const prefs = { ...state.prefs, ...patch }
-          savePrefs(prefs)
-          applyTheme(prefs)
-          setState({ prefs })
-        },
-        onClearLocal: () => void discardLocal(),
-        onResetApp: () => void hardReset({ data: false }),
-        onForgetCredentials: () => {
-          clearCredentials()
-          setState({ credentials: null })
-        },
-        onManageCategories: () => openRefPanel('categories'),
-        onManageOwners: () => openRefPanel('owners'),
-        onManagePriorities: () => openRefPanel('priorities'),
-        onManageStatuses: () => openRefPanel('statuses'),
-        onClose: () => render(),
-      }),
-    ),
+  const settingsButton = button(
+    '⚙',
+    locked ? 'Зачекайте, поки зміни збережуться' : 'Налаштування',
+    () => {
+      if (locked) return
+      openDialog(
+        settingsMenu({
+          prefs: state.prefs,
+          onChange: (patch) => {
+            const prefs = { ...state.prefs, ...patch }
+            savePrefs(prefs)
+            applyTheme(prefs)
+            setState({ prefs })
+          },
+          onClearLocal: () => void discardLocal(),
+          onResetApp: () => void hardReset({ data: false }),
+          onForgetCredentials: () => {
+            clearCredentials()
+            setState({ credentials: null })
+          },
+          onManageCategories: () => openRefPanel('categories'),
+          onManageOwners: () => openRefPanel('owners'),
+          onManagePriorities: () => openRefPanel('priorities'),
+          onManageStatuses: () => openRefPanel('statuses'),
+          onClose: () => render(),
+        }),
+      )
+    },
   )
+  // Dictionary CRUD goes through the same applyPatch/scheduleSave path as tasks, so it
+  // races the Sheet exactly the same way — lock it out too while unsynced.
+  settingsButton.disabled = locked
 
   const aboutButton = button('?', 'Про застосунок', () => openDialog(aboutPanel({ onClose: () => render() })))
   aboutButton.className = 'app__button app__button--glyph'
@@ -527,7 +548,7 @@ function toolbar() {
     el('span', 'app__divider'),
     filters,
     el('span', 'app__spacer'),
-    el('span', `app__status${busy() ? ' app__status--busy' : ''}`, undefined, statusText()),
+    statusSpan(),
     editable && addButton,
     editButton,
     refreshButton,
@@ -545,8 +566,8 @@ function button(label, title, onClick) {
 }
 
 function statusText() {
-  if (state.sync.status === 'saving') return 'Збереження…'
-  if (state.sync.status === 'loading') return 'Синхронізація…'
+  if (state.sync.status === 'saving') return 'Збереження…!!!'
+  if (state.sync.status === 'loading') return 'Синхронізація…!!!'
   if (state.dirty) return 'Не збережено'
   if (state.sync.status === 'error') return 'Немає з’єднання'
   if (!state.snapshot) return 'Немає даних'
@@ -554,6 +575,17 @@ function statusText() {
   if (mins < 1) return 'Щойно оновлено'
   if (mins < 60) return `${mins} хв тому`
   return `${Math.floor(mins / 60)} год тому`
+}
+
+function statusSpan() {
+  const text = statusText()
+  const classes = [
+    'app__status',
+    busy() ? 'app__status--busy' : '',
+    busy() ? 'app__status--loading' : '',
+    text === 'Щойно оновлено' ? 'app__status--fresh' : '',
+  ].filter(Boolean).join(' ')
+  return el('span', classes, undefined, text)
 }
 
 /* ------------------------------------------------------------------ render ---- */
@@ -588,7 +620,7 @@ function render() {
   const hiddenStatuses = hiddenStatusSet()
   const tasks = displayTasks()
   const filtered = visibleTasks(tasks, hiddenOwners, hiddenStatuses, statuses(), state.prefs.showCompleted)
-  const editable = state.prefs.editingEnabled && Boolean(state.snapshot)
+  const editable = state.prefs.editingEnabled && Boolean(state.snapshot) && !syncing()
 
   const app = el('div', 'app')
   append(app, toolbar())
@@ -651,6 +683,18 @@ function setEditing(enabled) {
 
 function busy() {
   return state.sync.status === 'loading' || state.sync.status === 'saving'
+}
+
+/**
+ * Not safe to start a new edit, or to refresh, while a write is in flight OR still
+ * only queued (the 1.2s save debounce). That gap — `dirty` but not yet `busy` — is
+ * exactly how a newly-added task used to get lost: add a task, then hit refresh before
+ * the debounced save ever fires, and the fetch's snapshot silently overwrote the local
+ * one, discarding the unsent task. Locking every mutating control until this is false
+ * closes that window instead of relying on timing.
+ */
+function syncing() {
+  return busy() || state.dirty
 }
 
 /**
@@ -750,7 +794,7 @@ if ('serviceWorker' in navigator) {
 // Poll on focus: Sheets pushes nothing, so this is the only way a change made on
 // another device arrives.
 window.addEventListener('focus', () => {
-  if (state.credentials && !state.dirty) void refresh()
+  if (state.credentials && !syncing()) void refresh()
 })
 
 if (!requestedReset) {

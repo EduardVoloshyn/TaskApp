@@ -56,8 +56,6 @@ export function taskCard(task, { statuses = [], owner, editing = false, todayIso
     append(node, append(el('div', 'task-card__status-row'), bar, ownerEl, due))
   }
 
-  if (task.notes) append(node, el('div', 'task-card__notes', undefined, '📝'))
-
   return node
 }
 
