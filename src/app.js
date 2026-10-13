@@ -26,7 +26,7 @@ import {
   saveSnapshot,
 } from './sync/storage.js'
 import { append, clear, el } from './ui/dom.js'
-import { ICON, actionButton } from './ui/buttons.js'
+import { ICON } from './ui/buttons.js'
 import { aboutPanel } from './ui/about-panel.js'
 import { board } from './ui/board.js'
 import { filterBar } from './ui/filter-bar.js'
@@ -462,8 +462,10 @@ function toolbar() {
     onToggle: (id) => setHiddenOwners(toggleHidden(hiddenOwners, id)),
     onShowAll: () => setHiddenOwners([]),
   })
+  // The last status is "completed" (see isTaskCompleted) and has its own dedicated
+  // toggle ("Показати завершено") — filtering by it here would be redundant with that.
   const statusBar = filterBar({
-    items: statuses(),
+    items: statuses().slice(0, -1),
     hidden: hiddenStatuses,
     counts: countBy(tasks, 'status_id'),
     onToggle: (id) => setHiddenStatuses(toggleHidden(hiddenStatuses, id)),
@@ -497,12 +499,10 @@ function toolbar() {
   )
   editButton.disabled = !state.snapshot
 
-  const addButton = actionButton({
-    icon: ICON.add,
-    label: 'Завдання',
-    kind: 'accent',
-    onClick: () => { if (!locked) onAddTask() },
-  })
+  // Icon-only, like the other toolbar buttons — "Завдання" as a label was the widest
+  // thing in the bar for the least information (the icon alone already reads as "add").
+  const addButton = button(ICON.add, 'Додати завдання', () => { if (!locked) onAddTask() })
+  addButton.className = 'app__button app__button--accent app__button--glyph'
   addButton.disabled = !state.snapshot || locked
   if (locked) addButton.title = 'Зачекайте, поки зміни збережуться'
 

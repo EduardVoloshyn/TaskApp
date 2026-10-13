@@ -1,14 +1,17 @@
+import { PALETTE } from '../model/refs.js'
 import { append, el } from './dom.js'
 
 /**
  * A generic filter-chip row: one toggle per item, plus a count. Used for both the Owner
  * filter and the Status filter in the board header — same mechanism, different item
- * lists.
+ * lists. Owners carry no colour; Statuses do — an item's own `color` (when a known
+ * token) tints its chip the same way it tints everything else in the app, so a status
+ * chip reads as "the same thing" wherever it appears.
  *
  * Renders nothing at all when there are no items, so the header does not reserve space
  * for a filter with nothing to filter.
  *
- * @param {{ items: Array<{id: string, name: string}>,
+ * @param {{ items: Array<{id: string, name: string, color?: string}>,
  *           hidden: Set<string>,
  *           counts: Record<string, number>,
  *           onToggle: (id: string) => void,
@@ -23,8 +26,11 @@ export function filterBar({ items, hidden, counts, onToggle, onShowAll }) {
   for (const item of items) {
     const off = hidden.has(item.id)
     const count = counts[item.id] ?? 0
+    const colour = item.color && PALETTE.includes(item.color) ? item.color : null
 
-    const chip = el('button', `chip-toggle${off ? ' chip-toggle--off' : ''}`)
+    const classes = ['chip-toggle', off ? 'chip-toggle--off' : '', colour ? `chip-toggle--${colour}` : '']
+      .filter(Boolean).join(' ')
+    const chip = el('button', classes)
     chip.type = 'button'
     chip.setAttribute('aria-pressed', String(!off))
     chip.title = off ? `Показати «${item.name}»` : `Сховати «${item.name}»`

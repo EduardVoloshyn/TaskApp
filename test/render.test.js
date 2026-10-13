@@ -6,6 +6,7 @@ installDom()
 const { board } = await import('../src/ui/board.js')
 const { taskCard } = await import('../src/ui/task-card.js')
 const { refPanel } = await import('../src/ui/ref-panel.js')
+const { filterBar } = await import('../src/ui/filter-bar.js')
 const { taskDialog } = await import('../src/ui/task-dialog.js')
 const { createTask } = await import('../src/model/tasks.js')
 
@@ -235,6 +236,46 @@ test('refPanel delete icon does nothing when confirmation is declined', () => {
   dialog.find('ref-list__delete').dispatch('click', {})
   eq(deleted, null)
   globalThis.confirm = () => true // restore the default for every test after this one
+})
+
+/* ---------------------------------------------------------------- filter-bar ---- */
+
+test('filterBar tints a chip by the item\'s own colour, when it has one', () => {
+  const bar = filterBar({
+    items: [{ id: 's1', name: 'У роботі', color: 'blue' }, { id: 'o1', name: 'Едуард' }],
+    hidden: new Set(),
+    counts: {},
+    onToggle: () => {},
+    onShowAll: () => {},
+  })
+  const chips = bar.findAll('chip-toggle')
+  ok(chips[0].className.includes('chip-toggle--blue'), `got "${chips[0].className}"`)
+  eq(chips[1].className.includes('chip-toggle--blue'), false, 'an item with no colour must not get a modifier')
+})
+
+test('filterBar falls back to no colour modifier for an unknown token', () => {
+  const bar = filterBar({
+    items: [{ id: 's1', name: 'X', color: 'not-a-colour' }],
+    hidden: new Set(),
+    counts: {},
+    onToggle: () => {},
+    onShowAll: () => {},
+  })
+  const chip = bar.find('chip-toggle')
+  eq(/chip-toggle--[a-z]+/.test(chip.className.replace('chip-toggle--off', '')), false, `got "${chip.className}"`)
+})
+
+test('filterBar keeps the --off modifier alongside a colour modifier when hidden', () => {
+  const bar = filterBar({
+    items: [{ id: 's1', name: 'У роботі', color: 'blue' }],
+    hidden: new Set(['s1']),
+    counts: {},
+    onToggle: () => {},
+    onShowAll: () => {},
+  })
+  const chip = bar.find('chip-toggle')
+  ok(chip.className.includes('chip-toggle--off'))
+  ok(chip.className.includes('chip-toggle--blue'))
 })
 
 /* ---------------------------------------------------------------- task-dialog ---- */

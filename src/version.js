@@ -1,5 +1,5 @@
-export const VERSION = '1.2'
-export const RELEASED = '2026-10-12'
+export const VERSION = '1.3'
+export const RELEASED = '2026-10-13'
 
 /**
  * The data-model schema this build expects. Bump alongside `SCHEMA_VERSION` in

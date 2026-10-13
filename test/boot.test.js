@@ -38,6 +38,8 @@ const { root } = installDom({ store })
 await import('../src/app.js')
 
 const labels = () => root.findAll('app__button').map((b) => b.textContent)
+// Icon-only now, so presence is checked by its title, not visible text.
+const addButtonPresent = () => root.findAll('app__button').some((b) => b.title === 'Додати завдання')
 
 test('the app boots and renders a toolbar and board rather than throwing', () => {
   ok(root.find('app__bar'), 'no toolbar — the setup card or an exception instead')
@@ -59,7 +61,7 @@ test('editing is off by default, so the button offers the pencil', () => {
 })
 
 test('view-only mode hides the add-task button', () => {
-  eq(labels().some((l) => l.includes('Завдання')), false, 'add button offered while editing is off')
+  eq(addButtonPresent(), false, 'add button offered while editing is off')
 })
 
 test('turning editing on reveals the add-task button and flips the toggle', () => {
@@ -69,7 +71,7 @@ test('turning editing on reveals the add-task button and flips the toggle', () =
 
   const after = labels()
   eq(after.includes('🔒'), true, `toolbar was ${after.join(' ')}`)
-  eq(after.some((l) => l.includes('Завдання')), true, 'add-task button did not appear')
+  ok(addButtonPresent(), 'add-task button did not appear')
 })
 
 test('turning it off again returns to view-only', () => {
@@ -82,6 +84,11 @@ test('the owner and status filter chips render, beside their counts', () => {
   const chips = root.findAll('chip-toggle')
   ok(chips.some((c) => c.textContent.includes('Едуард')), 'owner filter missing')
   ok(chips.some((c) => c.textContent.includes('У роботі')), 'status filter missing')
+})
+
+test('the last status (Завершено) has no filter chip of its own — only the dedicated "Показати завершено" toggle', () => {
+  const statusChip = root.findAll('chip-toggle').find((c) => c.title.includes('«Завершено»'))
+  eq(statusChip, undefined, 'the completed status should not get its own filter chip')
 })
 
 test('hiding the owner filters that task out, and leaves the unassigned task visible', () => {

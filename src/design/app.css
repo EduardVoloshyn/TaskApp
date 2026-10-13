@@ -24,9 +24,9 @@ body {
 .app__bar {
   display: flex;
   align-items: center;
-  gap: var(--gap-3);
+  gap: var(--gap-2);
   flex-wrap: wrap;
-  row-gap: var(--gap-2);
+  row-gap: var(--gap-1);
   padding: var(--gap-3) var(--gap-4);
   border-bottom: 1px solid var(--rule);
 }
@@ -67,7 +67,7 @@ body {
 .app__button {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
   white-space: nowrap;
   font: inherit;
   font-size: var(--text-sm);
@@ -125,7 +125,7 @@ body {
 .app__filters {
   display: flex;
   align-items: center;
-  gap: var(--gap-3);
+  gap: var(--gap-2);
   flex-wrap: wrap;
 }
 
@@ -518,14 +518,14 @@ body {
 .chips-bar {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.25rem;
   flex-wrap: wrap;
 }
 
 .chip-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.25rem;
   font: inherit;
   font-size: var(--text-xs);
   white-space: nowrap;
@@ -538,11 +538,25 @@ body {
 }
 .chip-toggle:hover { border-color: var(--ink-faint); }
 
+/* A Status chip's own colour (Owner chips carry none, so these never apply there).
+   Same bg/line/ink triple used everywhere else a status's colour appears. Declared
+   before --off below so --off's equal-specificity rule wins the cascade when a chip
+   carries both classes at once — off must always look recessed, never tinted. */
+.chip-toggle--slate  { border-color: var(--slate-line);  background: var(--slate-bg);  color: var(--slate-ink); }
+.chip-toggle--blue   { border-color: var(--blue-line);   background: var(--blue-bg);   color: var(--blue-ink); }
+.chip-toggle--red    { border-color: var(--red-line);    background: var(--red-bg);    color: var(--red-ink); }
+.chip-toggle--amber  { border-color: var(--amber-line);  background: var(--amber-bg);  color: var(--amber-ink); }
+.chip-toggle--green  { border-color: var(--green-line);  background: var(--green-bg);  color: var(--green-ink); }
+.chip-toggle--violet { border-color: var(--violet-line); background: var(--violet-bg); color: var(--violet-ink); }
+.chip-toggle--teal   { border-color: var(--teal-line);   background: var(--teal-bg);   color: var(--teal-ink); }
+.chip-toggle--rose   { border-color: var(--rose-line);   background: var(--rose-bg);   color: var(--rose-ink); }
+
 /* Switched off: recessed rather than removed, so the toggle stays findable. */
 .chip-toggle--off {
   color: var(--ink-faint);
   background: transparent;
   border-style: dashed;
+  border-color: var(--rule-strong); /* neutral even over a colour modifier above */
 }
 .chip-toggle--off .chip-toggle__count { opacity: 0.6; }
 
