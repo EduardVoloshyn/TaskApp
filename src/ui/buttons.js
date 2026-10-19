@@ -22,6 +22,7 @@ export const ICON = {
   reload: '🔄',
   reset: '🧹',
   forget: '🔑',
+  saving: '💾',
 }
 
 /**

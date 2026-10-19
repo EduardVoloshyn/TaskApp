@@ -566,8 +566,8 @@ function button(label, title, onClick) {
 }
 
 function statusText() {
-  if (state.sync.status === 'saving') return 'Збереження…!!!'
-  if (state.sync.status === 'loading') return 'Синхронізація…!!!'
+  if (state.sync.status === 'saving') return `${ICON.saving} Збереження`
+  if (state.sync.status === 'loading') return `${ICON.reload} Синхронізація`
   if (state.dirty) return 'Не збережено'
   if (state.sync.status === 'error') return 'Немає з’єднання'
   if (!state.snapshot) return 'Немає даних'

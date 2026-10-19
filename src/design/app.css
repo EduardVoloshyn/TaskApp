@@ -62,6 +62,7 @@ body {
 .app__status--loading {
   color: var(--red-ink);
   font-weight: 700;
+  animation: pulse 1s ease-in-out infinite;
 }
 
 .app__button {
@@ -670,6 +671,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .app__status--busy::after { animation: none; opacity: 0.6; }
+  .app__status--loading { animation: none; }
 }
 
 /* ============================================================ small screens ==== */
