@@ -14,7 +14,10 @@ import { installDom } from './dom-stub.js'
  */
 
 const store = {
-  'taskapp.credentials': JSON.stringify({ deploymentId: 'AKfyTEST', secret: 's' }),
+  'taskapp.credentials': JSON.stringify({
+    clientId: 'test.apps.googleusercontent.com',
+    spreadsheetId: '1TESTSHEET',
+  }),
   'taskapp.snapshot': JSON.stringify({
     tasks: [
       { id: 'a', name: 'Написати звіт', status_id: 's1', category_id: 'c1', priority_id: 'p1', owner_id: 'o1', due_date: '', notes: '' },
@@ -146,4 +149,99 @@ test('turning the completed toggle back off hides it again', () => {
   const chip = root.findAll('chip-toggle').find((c) => c.textContent.includes('Показати завершено'))
   chip.dispatch('click', {})
   eq(root.findAll('task-card').some((c) => c.textContent.includes('Завершений звіт')), false)
+})
+
+/* -------------------------------------------------------------- duplicate ---- */
+
+// Dialogs are appended to document.body (see openDialog in app.js), not into #root.
+
+test('duplicating a task stays a draft — nothing is queued for save until Save is clicked', () => {
+  const before = root.findAll('task-card').length
+
+  const card = root.findAll('task-card').find((c) => c.textContent.includes('Написати звіт'))
+  ok(card, 'no card for Написати звіт')
+  // Board click handling is delegated to the grid container — dispatch there with an
+  // explicit target, same as render.test.js's card-click test (the stub has no bubbling).
+  root.find('board').dispatch('click', { target: card })
+
+  const original = document.body.find('sheet')
+  ok(original, 'task dialog did not open')
+  const dupBtn = original.findAll('app__button').find((b) => b.textContent.includes('Дублювати'))
+  ok(dupBtn, 'no Duplicate button')
+  dupBtn.dispatch('click', {})
+
+  // The draft shows optimistically on the board, same as "add task" does...
+  eq(root.findAll('task-card').length, before + 1, 'draft did not appear on the board')
+  // ...but — this was the bug — nothing should actually be queued for save yet.
+  eq(
+    root.findAll('app__button').some((b) => b.title === 'Зачекайте, поки зміни збережуться'),
+    false,
+    'duplicating alone locked the UI as if a real write were already pending',
+  )
+
+  const draftDialog = document.body.find('sheet')
+  ok(draftDialog, 'duplicate did not open its own dialog')
+  ok(
+    draftDialog.find('sheet__heading').textContent.includes('Нове завдання'),
+    'duplicate was not opened as a new/draft task',
+  )
+
+  // Cancelling discards the draft entirely, with nothing left behind.
+  const cancelBtn = draftDialog.findAll('app__button').find((b) => b.textContent.includes('Скасувати'))
+  cancelBtn.dispatch('click', {})
+  eq(root.findAll('task-card').length, before, 'cancelling the duplicate still left it behind')
+})
+
+test('saving a duplicate commits it as a real task and queues a save, unlike just duplicating', () => {
+  const before = root.findAll('task-card').length
+
+  const card = root.findAll('task-card').find((c) => c.textContent.includes('Написати звіт'))
+  root.find('board').dispatch('click', { target: card })
+  const original = document.body.find('sheet')
+  original.findAll('app__button').find((b) => b.textContent.includes('Дублювати')).dispatch('click', {})
+
+  const draftDialog = document.body.find('sheet')
+  ok(draftDialog.findAll('app__button').some((b) => b.textContent.includes('Зберегти')), 'no Save button on the duplicate dialog')
+  draftDialog.find('sheet__form').dispatch('submit', { preventDefault: () => {} })
+
+  eq(root.findAll('task-card').length, before + 1, 'saved duplicate did not stay on the board')
+  ok(
+    root.findAll('app__button').some((b) => b.title === 'Зачекайте, поки зміни збережуться'),
+    'saving the duplicate did not queue a real write the way a normal edit does',
+  )
+})
+
+/* -------------------------------------------------------------- settings lock ---- */
+
+// The previous test left a save queued (dirty: true) and no timer has fired, so the
+// toolbar is still locked here — exactly the "stuck sync" state Settings must survive.
+
+test('Settings stays open even while a save is queued, unlike Refresh/Add', () => {
+  ok(
+    root.findAll('app__button').some((b) => b.title === 'Зачекайте, поки зміни збережуться'),
+    'test setup assumption broken: toolbar is not actually locked right now',
+  )
+  const settingsBtn = root.findAll('app__button').find((b) => b.title === 'Налаштування')
+  ok(settingsBtn, 'no Settings button')
+  ok(!settingsBtn.disabled, 'Settings button must stay enabled while locked')
+
+  settingsBtn.dispatch('click', {})
+  const menu = document.body.find('sheet')
+  ok(menu, 'Settings dialog did not open while locked')
+
+  const manageCategories = menu.findAll('app__button').find((b) => b.textContent.includes('Категорії'))
+  ok(manageCategories, 'no Категорії button in Settings')
+  eq(manageCategories.disabled, true, 'dictionary editors must stay locked while unsynced')
+
+  const forget = menu.findAll('app__button').find((b) => b.textContent.includes('Забути таблицю і доступ'))
+  ok(forget, 'no forget-credentials button in Settings')
+  eq(forget.disabled, false, 'forget-credentials must stay usable even while locked')
+})
+
+test('forgetting credentials works even while locked, and returns to the setup screen', () => {
+  const menu = document.body.find('sheet')
+  const forget = menu.findAll('app__button').find((b) => b.textContent.includes('Забути таблицю і доступ'))
+  forget.dispatch('click', {})
+
+  ok(root.find('card'), 'did not fall back to the setup screen after forgetting credentials')
 })

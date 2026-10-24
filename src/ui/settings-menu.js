@@ -17,6 +17,9 @@ import { ICON, actionButton } from './buttons.js'
  *           onManageOwners: () => void,
  *           onManagePriorities: () => void,
  *           onManageStatuses: () => void,
+ *           locked?: boolean,
+ *           connected?: boolean,
+ *           onConnectGoogle?: () => void,
  *           onClose?: () => void }} props
  * @returns {HTMLDialogElement}
  */
@@ -30,6 +33,9 @@ export function settingsMenu({
   onManageOwners,
   onManagePriorities,
   onManageStatuses,
+  locked = false,
+  connected = false,
+  onConnectGoogle,
   onClose,
 }) {
   const dialog = /** @type {HTMLDialogElement} */ (el('dialog', 'sheet'))
@@ -67,7 +73,7 @@ export function settingsMenu({
 
   const forget = actionButton({
     icon: ICON.forget,
-    label: 'Забути адресу і секрет',
+    label: 'Забути таблицю і доступ',
     kind: 'danger',
     onClick: () => {
       onForgetCredentials()
@@ -77,11 +83,39 @@ export function settingsMenu({
 
   append(body, append(el('div', 'sheet__actions'), clearLocal, resetApp, el('span', 'app__spacer'), forget))
 
+  append(
+    body,
+    append(
+      el('div', 'sheet__actions'),
+      actionButton({
+        icon: ICON.forget,
+        label: 'Оновити доступ Google',
+        title: 'Отримати новий токен, якщо термін дії минув',
+        disabled: !connected,
+        onClick: () => {
+          onConnectGoogle?.()
+          dialog.close()
+        },
+      }),
+    ),
+  )
+
   append(body, el('hr', 'sheet__divider'))
   append(body, el('h3', 'about__heading', undefined, 'Довідники'))
 
+  // Dictionary CRUD goes through the same applyPatch/scheduleSave path as tasks, so it
+  // races the Sheet exactly the same way — locked out while unsynced. Everything above
+  // the divider (theme, cache reset, forget credentials) never touches the Sheet, so it
+  // stays reachable even mid-sync — that's the only way to recover from a stuck sync
+  // without the ?reset=all URL fallback.
   const manage = (label, onClick) =>
-    actionButton({ icon: ICON.edit, label, onClick: () => { onClick(); dialog.close() } })
+    actionButton({
+      icon: ICON.edit,
+      label,
+      disabled: locked,
+      title: locked ? 'Зачекайте, поки зміни збережуться' : undefined,
+      onClick: () => { onClick(); dialog.close() },
+    })
 
   append(
     body,

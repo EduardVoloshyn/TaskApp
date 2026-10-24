@@ -9,6 +9,7 @@ import './refs.test.js'
 import './version.test.js'
 import './single-flight.test.js'
 import './render.test.js'
+import './sheets.test.js'
 import './boot.test.js'
 import { run } from './harness.js'
 

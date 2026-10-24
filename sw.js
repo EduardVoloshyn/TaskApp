@@ -6,13 +6,13 @@
  * in the background for next time.
  *
  * The API is deliberately NOT cached. Board data lives in localStorage, which the app
- * manages itself; caching the Apps Script responses here would create a second, stale
+ * manages itself; caching the Sheets API responses here would create a second, stale
  * copy with its own invalidation problem.
  *
  * BUMP `VERSION` whenever any precached file changes, or clients keep the old copy.
  */
 
-const VERSION = 'v1'
+const VERSION = 'v3'
 const CACHE = `taskapp-${VERSION}`
 
 const SHELL = [
@@ -25,7 +25,8 @@ const SHELL = [
   './src/design/app.css',
   './src/model/tasks.js',
   './src/model/refs.js',
-  './src/sync/api.js',
+  './src/sync/sheets.js',
+  './src/sync/schema.js',
   './src/sync/storage.js',
   './src/sync/reset.js',
   './src/sync/single-flight.js',
@@ -71,7 +72,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return
 
   const url = new URL(request.url)
-  // Cross-origin means the Apps Script API. Never intercept it.
+  // Cross-origin means the Google Sheets API. Never intercept it.
   if (url.origin !== self.location.origin) return
 
   event.respondWith(

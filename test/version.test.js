@@ -2,9 +2,9 @@ import { eq, test } from './harness.js'
 import { REQUIRED_SCHEMA_VERSION, isSchemaOutdated } from '../src/version.js'
 
 /*
- * Detects a Sheet that hasn't been migrated to the schema this build expects — the
- * consequence of shipping a data-model change without running Migrations.gs's
- * migrate() (see CLAUDE.md's "Changing the data model" checklist).
+ * Detects a Sheet still on an older schema than this build expects — the consequence
+ * of shipping a data-model change without the Sheet catching up (see CLAUDE.md's
+ * "Changing the data model" checklist).
  */
 
 test('no snapshot yet is never outdated', () => {

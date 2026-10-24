@@ -1,6 +1,6 @@
 # Publishes the app to GitHub Pages.
 #
-# The repo holds more than the app — docs, Apps Script sources, tests, the dev server.
+# The repo holds more than the app — docs, tests, the dev server.
 # Rather than gitignoring those (which would drop them from version control, not just
 # from hosting), this copies only what the browser needs into a staging directory and
 # publishes that. The repo stays complete; the site stays minimal.
@@ -46,9 +46,10 @@ jobs:
 
       - name: Fail if a credential ever reaches the site
         run: |
-          # Cheap insurance. The secret and deployment id live in localStorage per
-          # device and must never be in a published file.
-          if grep -rIlE 'AKfycb[A-Za-z0-9_-]{20,}|SHARED_SECRET *= *.[^C]' _site; then
+          # Cheap insurance. The app asks for the spreadsheet id and OAuth client id
+          # per device and keeps them in localStorage; neither should ever be baked
+          # into a published file, and a private key never should either.
+          if grep -rIlE 'apps\.googleusercontent\.com|BEGIN [A-Z ]*PRIVATE KEY|"private_key"' _site; then
             echo "::error::a credential-looking string reached the published site"
             exit 1
           fi

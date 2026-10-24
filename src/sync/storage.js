@@ -31,18 +31,27 @@ function write(key, value) {
   }
 }
 
-/** @returns {{ deploymentId: string, secret: string } | null} */
+/**
+ * Which Sheet, and which OAuth client to reach it with.
+ *
+ * Neither is a secret — the client id is a public identifier restricted by its
+ * authorised origins, and the spreadsheet id is inert without access to the Sheet. They
+ * live here rather than in the repo so one published build does not point every visitor
+ * at one person's board. The access token itself is never stored; see src/sync/sheets.js.
+ *
+ * @returns {{ clientId: string, spreadsheetId: string } | null}
+ */
 export function loadCredentials() {
   const c = read(KEY_CREDS)
-  if (!c || !c.secret || !c.deploymentId) return null
-  return { deploymentId: String(c.deploymentId), secret: String(c.secret) }
+  if (!c || !c.clientId || !c.spreadsheetId) return null
+  return { clientId: String(c.clientId), spreadsheetId: String(c.spreadsheetId) }
 }
 
-/** @param {{ deploymentId: string, secret: string }} c */
+/** @param {{ clientId: string, spreadsheetId: string }} c */
 export function saveCredentials(c) {
   write(KEY_CREDS, {
-    deploymentId: String(c.deploymentId).trim(),
-    secret: String(c.secret).trim(),
+    clientId: String(c.clientId ?? '').trim(),
+    spreadsheetId: String(c.spreadsheetId ?? '').trim(),
   })
 }
 
@@ -65,9 +74,9 @@ export function saveSnapshot(s) {
 }
 
 /*
- * A write takes a few seconds against Apps Script — ample time to close the tab
- * mid-save. The pending payload is therefore persisted before the request goes out
- * and cleared only once the server confirms, so a save survives the app being closed.
+ * A save is fast now, but not instant, and a tab can close inside that window. The
+ * pending payload is persisted before the request goes out and cleared only once the
+ * write is confirmed, so an edit survives the app being closed mid-save.
  */
 
 export function loadPending() {

@@ -22,6 +22,14 @@
   </head>
   <body>
     <div id="root"></div>
+
+    <!--
+      Google Identity Services: how the app gets an OAuth token for the Sheets API.
+      Deferred, and the app degrades rather than breaks if it never loads — the cached
+      board still renders, only syncing needs a token.
+    -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
     <script type="module" src="./src/app.js"></script>
   </body>
 </html>

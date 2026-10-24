@@ -148,6 +148,9 @@ export function installDom(options = {}) {
   globalThis.document = {
     documentElement,
     body,
+    // app.js keeps the OAuth token warm off a document-level click listener.
+    addEventListener: () => {},
+    removeEventListener: () => {},
     getElementById: (id) => (id === 'root' ? root : null),
     createElement: (tag) => new StubNode(tag),
     createTextNode: (text) => {

@@ -27,14 +27,15 @@ export const ICON = {
 
 /**
  * @param {{ icon: string, label: string, title?: string, kind?: 'primary'|'danger',
- *           type?: 'button'|'submit', onClick?: () => void }} spec
+ *           type?: 'button'|'submit', disabled?: boolean, onClick?: () => void }} spec
  * @returns {HTMLButtonElement}
  */
-export function actionButton({ icon, label, title, kind, type = 'button', onClick }) {
+export function actionButton({ icon, label, title, kind, type = 'button', disabled = false, onClick }) {
   const node = /** @type {HTMLButtonElement} */ (
     el('button', `app__button${kind ? ` app__button--${kind}` : ''}`)
   )
   node.type = type
+  node.disabled = disabled
   if (title) node.title = title
 
   append(

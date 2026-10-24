@@ -9,7 +9,14 @@ import {
   updateTask,
 } from './model/tasks.js'
 import { ICON_CHOICES, createRef, deleteRef, findRef, moveRef, updateRef } from './model/refs.js'
-import { ApiError, fetchBoard, saveBoard } from './sync/api.js'
+import {
+  ApiError,
+  connect as connectGoogle,
+  disconnect as disconnectGoogle,
+  fetchBoard,
+  saveBoard,
+  touchAuth,
+} from './sync/sheets.js'
 import { hardReset, resetRequested } from './sync/reset.js'
 import { REQUIRED_SCHEMA_VERSION, isSchemaOutdated } from './version.js'
 import { singleFlight } from './sync/single-flight.js'
@@ -170,6 +177,21 @@ function setShowCompleted(showCompleted) {
   setState({ prefs })
 }
 
+async function signInToGoogle() {
+  if (!state.credentials) return
+  try {
+    await connectGoogle(state.credentials.clientId)
+    setState({ sync: { status: 'idle' } })
+    // Same order as the boot sequence: an unsent edit is flushed first. Refreshing
+    // while dirty would overwrite the local snapshot and take the unsaved edit with it.
+    if (state.dirty) await flushSave().catch(() => {})
+    else void refresh()
+  } catch (err) {
+    const message = err instanceof ApiError ? err.message : 'Не вдалося увійти в Google'
+    setState({ sync: { status: 'error', message, code: 'needs_signin' } })
+  }
+}
+
 /**
  * Commits an edit: local first, saved in the background. The UI never waits on the
  * network.
@@ -255,7 +277,14 @@ async function discardLocal() {
   await refresh()
 }
 
-async function refresh() {
+/**
+ * Wrapped in `singleFlight` for the same reason `flushSave` is: the initial boot fetch,
+ * a window-focus refresh, and a manual click on the refresh button can all land within
+ * milliseconds of each other, and without this they each fired their own concurrent GET
+ * at the Sheets API — duplicate work, duplicate quota, and a later one can land before
+ * an earlier one and hand the board a stale snapshot.
+ */
+const refresh = singleFlight(async ({ background = false } = {}) => {
   if (!state.credentials) return
   setState({ sync: { status: 'loading' } })
   try {
@@ -263,10 +292,18 @@ async function refresh() {
     saveSnapshot(snapshot)
     setState({ snapshot, sync: { status: 'ok' } })
   } catch (err) {
+    // A heartbeat nobody asked for is not worth an error banner over the board: the
+    // cached copy on screen is still usable and the status text already says how old it
+    // is. A dropped background poll is not worth a red banner over a board that is
+    // perfectly readable.
+    if (background) {
+      setState({ sync: { status: 'idle' } })
+      return
+    }
     const message = err instanceof ApiError ? err.message : 'Невідома помилка'
     setState({ sync: { status: 'error', message, code: 'network' } })
   }
-}
+}, { onRerun: () => void refresh({ background: true }) })
 
 /* ---------------------------------------------------------------- dialogs ---- */
 
@@ -305,12 +342,17 @@ function openTaskDialog(id, { isNew = false } = {}) {
         if (isNew) setState({ draftTask: null })
         else applyPatch({ tasks: deleteTask(currentTasks(), id) })
       },
+      // A duplicate is a draft, not a committed write — same as "add task": it only
+      // reaches applyPatch (and the Sheet) if the user actually hits Save on it.
+      // Saving it immediately here was the bug: it queued a real write the instant you
+      // clicked Duplicate, with no way to back out, and a slow/stuck sync looked like
+      // the duplicate itself had failed.
       onDuplicate: isNew
         ? undefined
         : () => {
             const copy = duplicateTask(task)
-            applyPatch({ tasks: [...currentTasks(), copy] })
-            openTaskDialog(copy.id)
+            setState({ draftTask: copy })
+            openTaskDialog(copy.id, { isNew: true })
           },
       onClose: () => {
         if (isNew && state.draftTask?.id === id) setState({ draftTask: null })
@@ -506,38 +548,37 @@ function toolbar() {
   addButton.disabled = !state.snapshot || locked
   if (locked) addButton.title = 'Зачекайте, поки зміни збережуться'
 
-  const settingsButton = button(
-    '⚙',
-    locked ? 'Зачекайте, поки зміни збережуться' : 'Налаштування',
-    () => {
-      if (locked) return
-      openDialog(
-        settingsMenu({
-          prefs: state.prefs,
-          onChange: (patch) => {
-            const prefs = { ...state.prefs, ...patch }
-            savePrefs(prefs)
-            applyTheme(prefs)
-            setState({ prefs })
-          },
-          onClearLocal: () => void discardLocal(),
-          onResetApp: () => void hardReset({ data: false }),
-          onForgetCredentials: () => {
-            clearCredentials()
-            setState({ credentials: null })
-          },
-          onManageCategories: () => openRefPanel('categories'),
-          onManageOwners: () => openRefPanel('owners'),
-          onManagePriorities: () => openRefPanel('priorities'),
-          onManageStatuses: () => openRefPanel('statuses'),
-          onClose: () => render(),
-        }),
-      )
-    },
-  )
-  // Dictionary CRUD goes through the same applyPatch/scheduleSave path as tasks, so it
-  // races the Sheet exactly the same way — lock it out too while unsynced.
-  settingsButton.disabled = locked
+  // Settings itself stays reachable even mid-sync — it's the only in-app way to forget
+  // credentials or reset the cache if a sync/save is stuck. Only the dictionary editors
+  // inside it (which write to the Sheet) are locked; see settingsMenu's `locked` prop.
+  const settingsButton = button('⚙', 'Налаштування', () => {
+    openDialog(
+      settingsMenu({
+        prefs: state.prefs,
+        locked,
+        connected: Boolean(state.credentials),
+        onConnectGoogle: () => void signInToGoogle(),
+        onChange: (patch) => {
+          const prefs = { ...state.prefs, ...patch }
+          savePrefs(prefs)
+          applyTheme(prefs)
+          setState({ prefs })
+        },
+        onClearLocal: () => void discardLocal(),
+        onResetApp: () => void hardReset({ data: false }),
+        onForgetCredentials: () => {
+          clearCredentials()
+          disconnectGoogle()
+          setState({ credentials: null })
+        },
+        onManageCategories: () => openRefPanel('categories'),
+        onManageOwners: () => openRefPanel('owners'),
+        onManagePriorities: () => openRefPanel('priorities'),
+        onManageStatuses: () => openRefPanel('statuses'),
+        onClose: () => render(),
+      }),
+    )
+  })
 
   const aboutButton = button('?', 'Про застосунок', () => openDialog(aboutPanel({ onClose: () => render() })))
   aboutButton.className = 'app__button app__button--glyph'
@@ -605,10 +646,21 @@ function render() {
     append(
       root,
       setupCard({
+        busy: state.sync.status === 'loading',
         error: state.sync.status === 'error' ? state.sync.message : undefined,
-        onSave: (creds) => {
+        // Sign in BEFORE storing anything: a client id that cannot grant a token is
+        // worth reporting on the spot, not persisting and failing on the next load.
+        onConnect: async (creds) => {
+          setState({ sync: { status: 'loading' } })
+          try {
+            await connectGoogle(creds.clientId)
+          } catch (err) {
+            const message = err instanceof ApiError ? err.message : 'Не вдалося увійти в Google'
+            setState({ sync: { status: 'error', message, code: 'needs_signin' } })
+            return
+          }
           saveCredentials(creds)
-          setState({ credentials: creds })
+          setState({ credentials: creds, sync: { status: 'idle' } })
           void refresh()
         },
       }),
@@ -698,10 +750,15 @@ function syncing() {
 }
 
 /**
- * The Sheet hasn't been migrated to the schema this build expects — code was deployed
- * (or this PWA build shipped) ahead of running `migrate()` in the Apps Script editor.
- * Shown persistently rather than folded into errorNotice(): it isn't a sync failure,
- * the board still loads, but some fields may not read/write correctly until fixed.
+ * The Sheet is still on an older schema than this build expects.
+ *
+ * Usually self-resolving: columns are mapped by header name and every save stamps
+ * `meta.schema_version`, so the first write after an upgrade brings the Sheet forward.
+ * It stays visible until then because a structural change (a renamed column, a new tab)
+ * does need doing by hand — there is no migration runner any more.
+ *
+ * Shown persistently rather than folded into errorNotice(): it is not a sync failure,
+ * the board still loads, but some fields may read blank until it clears.
  */
 function schemaNotice() {
   const notice = el('div', 'notice notice--warning')
@@ -713,7 +770,7 @@ function schemaNotice() {
       undefined,
       undefined,
       `⚠️ Схема даних застаріла (таблиця: v${actual}, потрібно: v${REQUIRED_SCHEMA_VERSION}). ` +
-        'Виконайте migrate() в редакторі Apps Script.',
+        'Оновиться після першого збереження; якщо ні — змініть структуру таблиці вручну.',
     ),
   )
   return notice
@@ -735,6 +792,18 @@ function errorNotice() {
       notice,
       el('span', 'app__spacer'),
       button('Відкинути мої зміни', 'Взяти версію з таблиці', () => void discardLocal()),
+    )
+  } else if (state.sync.code === 'needs_signin' || state.sync.code === 'forbidden') {
+    // The OAuth token expired and could not be renewed without a popup, which only a
+    // real click is allowed to open. Nothing is wrong with the data — it just needs a tap.
+    append(
+      notice,
+      el('span', 'app__spacer'),
+      button(
+        state.sync.code === 'forbidden' ? 'Інший акаунт' : 'Увійти в Google',
+        'Відновити доступ до таблиці',
+        () => void signInToGoogle(),
+      ),
     )
   } else if (state.dirty) {
     append(
@@ -791,10 +860,29 @@ if ('serviceWorker' in navigator) {
   }
 }
 
-// Poll on focus: Sheets pushes nothing, so this is the only way a change made on
-// another device arrives.
+/*
+ * Poll on focus: Sheets pushes nothing, so this is the only way a change made on
+ * another device arrives.
+ *
+ * Throttled: a tab switch is not evidence that anything changed, and alt-tabbing a few
+ * times should not fire a request each time for data that is seconds old. Once a minute
+ * still picks up another device's edits long before anyone notices.
+ */
+const FOCUS_REFRESH_MIN_MS = 60000
+
+/*
+ * Renewing an OAuth token opens a popup, which browsers allow only from a user gesture
+ * — and a debounced background save has none. Piggy-backing on any click keeps the
+ * token fresh ahead of time, so a save rarely has to stop and ask.
+ */
+document.addEventListener('click', () => {
+  if (state.credentials) touchAuth(state.credentials.clientId)
+}, { capture: true, passive: true })
+
 window.addEventListener('focus', () => {
-  if (state.credentials && !syncing()) void refresh()
+  if (!state.credentials || syncing()) return
+  if (Date.now() - (state.snapshot?.fetchedAt ?? 0) < FOCUS_REFRESH_MIN_MS) return
+  void refresh({ background: true })
 })
 
 if (!requestedReset) {

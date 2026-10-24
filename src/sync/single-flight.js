@@ -1,11 +1,11 @@
 /**
  * Runs an async task, never twice at once.
  *
- * The save path needs this. A write to Apps Script takes a few seconds, so an edit made
- * during one issues a second POST while the first is still running — and both carry the
- * *same* content hash. Two failure modes follow, neither obviously self-inflicted:
+ * The save path needs this. A write is not instant, so an edit made during one issues a
+ * second write while the first is still running — and both carry the *same* content
+ * hash. Two failure modes follow, neither obviously self-inflicted:
  *
- *   - the second waits on `LockService` and gives up as `locked`
+ *   - the two interleave and the later write loses the earlier one's changes
  *   - the first succeeds, moves the sheet's hash on, and the second is rejected `stale`
  *
  * Calls arriving while a run is in progress are collapsed into a single follow-up. A
