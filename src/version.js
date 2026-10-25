@@ -1,4 +1,4 @@
-export const VERSION = '2.3'
+export const VERSION = '2.3.1'
 export const RELEASED = '2026-10-25'
 
 /**

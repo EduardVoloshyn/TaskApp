@@ -107,11 +107,19 @@ function clientFor(clientId) {
 }
 
 /**
+ * Asks Google for an access token.
+ *
+ * Always `prompt: ''`, never `'consent'`. Empty means "reuse the grant I already
+ * have", and Google still shows the grant screen by itself the first time, or after
+ * the grant is revoked — so forcing consent buys nothing and costs the screen on
+ * every single sign-in. That is what made the grant window keep reappearing: the
+ * token is memory-only, so every reload needed a new one, and every one of those
+ * re-asked for permission already given.
+ *
  * @param {string} clientId
- * @param {boolean} consent true on a first connect, to force the grant screen
  * @returns {Promise<string>}
  */
-function requestToken(clientId, consent) {
+function requestToken(clientId) {
   return new Promise((resolve, reject) => {
     let client
     try {
@@ -134,16 +142,21 @@ function requestToken(clientId, consent) {
     client.error_callback = () => reject(new ApiError('Потрібен вхід у Google.', 'needs_signin'))
 
     try {
-      client.requestAccessToken({ prompt: consent ? 'consent' : '' })
+      client.requestAccessToken({ prompt: '' })
     } catch {
       reject(new ApiError('Потрібен вхід у Google.', 'needs_signin'))
     }
   })
 }
 
-/** From a real click in Settings or the setup card, so it may show the grant screen. */
+/**
+ * From a real click in Settings or the setup card, so a popup is allowed. Google
+ * decides whether any screen is needed: none when the grant stands, the account
+ * chooser when several accounts are signed in, the grant screen only when there is
+ * genuinely nothing to reuse.
+ */
 export function connect(clientId) {
-  return requestToken(clientId, !isConnected())
+  return requestToken(clientId)
 }
 
 export function disconnect() {
@@ -178,7 +191,7 @@ export function touchAuth(clientId) {
 
   renewing = true
   lastRenewAt = Date.now()
-  requestToken(clientId, false)
+  requestToken(clientId)
     .catch(() => {
       /* Best effort. A save asks properly, via the banner's sign-in button. */
     })
@@ -223,7 +236,7 @@ async function token(clientId) {
   renewing = true
   lastRenewAt = Date.now()
   try {
-    return await requestToken(clientId, false)
+    return await requestToken(clientId)
   } finally {
     renewing = false
   }

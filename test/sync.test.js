@@ -32,6 +32,7 @@ const sheet = () => ({
 
 let calls = []
 let tabs = sheet()
+let prompts = []
 
 /*
  * Installed per test rather than at import time: these are global, and the other
@@ -40,6 +41,7 @@ let tabs = sheet()
 function install() {
   calls = []
   tabs = sheet()
+  prompts = []
 
   globalThis.TextEncoder = class {
     encode(text) {
@@ -65,7 +67,8 @@ function install() {
       oauth2: {
         initTokenClient: (config) => ({
           ...config,
-          requestAccessToken() {
+          requestAccessToken(options) {
+            prompts.push(options?.prompt)
             this.callback({ access_token: 'test-token', expires_in: 3600 })
           },
         }),
@@ -185,4 +188,15 @@ test('a hand-edit to an unrelated tab does not block the save', async () => {
   tabs.owners = [['id', 'name'], ['o9', 'Хтось новий']]
   await saveBoard(CREDS, { ...board, tasks: [{ ...board.tasks[0], name: 'Моя зміна' }] })
   eq(calls.length, 2, 'owners is not being written, so its state is irrelevant')
+})
+
+
+/* ----------------------------------------------------------------- auth ---- */
+
+test('signing in never forces the consent screen', async () => {
+  install()
+  await connect(CREDS.clientId)
+  // `prompt: 'consent'` re-asks for permission already granted, and the token is
+  // memory-only — so every reload would show the grant window again.
+  eq(prompts.at(-1), '', `asked with prompt "${prompts.at(-1)}"`)
 })
