@@ -11,14 +11,16 @@
  * Shape of a sync, both directions:
  *
  *   read   1 request   values:batchGet over every tab
- *   save   2 requests  batchGet (conflict check) + batchUpdate (changed tabs only)
- *          3rd only when a tab shrank and its leftover rows need clearing
+ *   save   0 requests  when no tab actually differs
+ *          2 requests  batchGet of just the changed tabs (conflict check), then
+ *                      batchUpdate of those same tabs
+ *          3 requests  plus batchClear, when a tab shrank and left orphaned rows
  *
  * Two properties worth knowing:
  *
- *  - **No lock.** The conflict check is read-hash-compare-then-write, so a window
- *    exists between check and write. This app has one writer (ADR-0004); the content
- *    hash is there to catch the Sheet being hand-edited, not to arbitrate a race.
+ *  - **No lock.** The conflict check is read-compare-then-write, so a window exists
+ *    between check and write. This app has one writer (ADR-0004); the digests are
+ *    there to catch the Sheet being hand-edited, not to arbitrate a race.
  *  - **No server-side validation.** The task dialog enforces the required fields.
  */
 
@@ -280,7 +282,7 @@ export function rowsFromValues(values, cols) {
   return rows
 }
 
-/* ------------------------------------------------------------------- hash ---- */
+/* ---------------------------------------------------------------- digests ---- */
 
 /**
  * One canonical string per tab, in the tab's own written row order.
@@ -299,27 +301,68 @@ export function tabCanon(rows, cols) {
     .join('')
 }
 
-function canonByTab(rowsByTab) {
+/** Tabs whose content is compared for conflicts. `meta` carries updated_at, which
+ *  changes on every save by design, so it is never part of the comparison. */
+const DATA_TABS = TABS.filter((tab) => tab !== 'meta')
+
+async function digest(text) {
+  if (text === '') return ''
+  const bytes = new TextEncoder().encode(text)
+  const hash = await crypto.subtle.digest('SHA-256', bytes)
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * A fingerprint per tab, rather than one for the whole board.
+ *
+ * This is what lets a save read and compare only the tabs it is about to write: a task
+ * edit no longer has to prove that `owners` is untouched. Digested rather than kept as
+ * the raw canonical strings, because these are persisted in the snapshot and the raw
+ * form would be a verbatim second copy of the entire board.
+ *
+ * @param {Object<string, any[]>} rowsByTab rows per tab, in their written order
+ * @returns {Promise<Object<string, string>>}
+ */
+export async function tabDigests(rowsByTab) {
   const out = {}
-  for (const tab of TABS) out[tab] = tabCanon(rowsByTab[tab], COLS[tab])
+  await Promise.all(
+    DATA_TABS.map(async (tab) => {
+      out[tab] = await digest(tabCanon(rowsByTab[tab], COLS[tab]))
+    }),
+  )
   return out
 }
 
-/** `meta` is excluded: it carries updated_at, which changes on every save by design. */
-function boardCanonical(canons) {
-  return TABS.filter((t) => t !== 'meta').map((t) => `${t}${canons[t]}`).join('')
+/** Tabs where `b` differs from `a`. Absent on either side counts as different. */
+export function changedTabs(a, b) {
+  return DATA_TABS.filter((tab) => (a?.[tab] ?? null) !== (b?.[tab] ?? null))
 }
 
-async function hashOf(canons) {
-  const bytes = new TextEncoder().encode(boardCanonical(canons))
-  const digest = await crypto.subtle.digest('SHA-256', bytes)
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
+/**
+ * Shapes the client's board into exactly the rows that will be written.
+ *
+ * Must run before digesting: `tasks` is reordered on the way out, so digesting the
+ * unsorted client array would never match what the next read returns.
+ */
+function toRows(payload) {
+  return {
+    tasks: sortTasks(payload.tasks || []),
+    statuses: payload.statuses || [],
+    categories: payload.categories || [],
+    priorities: payload.priorities || [],
+    owners: payload.owners || [],
+    settings: settingsToRows(payload.settings),
+  }
 }
 
 /* ------------------------------------------------------------------ board ---- */
 
-async function readAll(creds) {
-  const ranges = TABS.map((t) => `ranges=${encodeURIComponent(t)}`).join('&')
+/**
+ * @param {{ spreadsheetId: string }} creds
+ * @param {string[]} [tabs] which tabs to fetch; all of them by default
+ */
+async function read(creds, tabs = TABS) {
+  const ranges = tabs.map((t) => `ranges=${encodeURIComponent(t)}`).join('&')
   const body = await call(
     `${API_ROOT}/${encodeURIComponent(creds.spreadsheetId)}/values:batchGet` +
       `?${ranges}&valueRenderOption=UNFORMATTED_VALUE`,
@@ -328,17 +371,17 @@ async function readAll(creds) {
   const valueRanges = body.valueRanges || []
   const rowsByTab = {}
   const heights = {}
-  TABS.forEach((tab, i) => {
+  tabs.forEach((tab, i) => {
     const values = valueRanges[i]?.values || []
     heights[tab] = values.length
     rowsByTab[tab] = rowsFromValues(values, COLS[tab])
   })
-  return { rowsByTab, heights, canons: canonByTab(rowsByTab) }
+  return { rowsByTab, heights }
 }
 
 /** @param {{ spreadsheetId: string }} creds */
 export async function fetchBoard(creds) {
-  const { rowsByTab, canons } = await readAll(creds)
+  const { rowsByTab } = await read(creds)
   const meta = rowsToSettings(rowsByTab.meta)
 
   // A blank colour cell becomes the palette default here rather than in five render
@@ -352,7 +395,7 @@ export async function fetchBoard(creds) {
     priorities: withColour(rowsByTab.priorities),
     owners: rowsByTab.owners,
     settings: rowsToSettings(rowsByTab.settings),
-    hash: await hashOf(canons),
+    digests: await tabDigests(rowsByTab),
     fetchedAt: Date.now(),
     sheetVersion: meta.schema_version ? String(meta.schema_version) : '',
   }
@@ -361,70 +404,72 @@ export async function fetchBoard(creds) {
 /* ------------------------------------------------------------------ write ---- */
 
 /**
- * Replaces the board, guarded by the content hash, writing only the tabs that differ.
+ * Writes only the tabs that actually changed, and reads back only those same tabs to
+ * check for a conflict first.
  *
- * Writes first and clears leftover rows second. A failure between the two leaves stale
- * rows below the real data, which the next save tidies; the reverse order would risk a
- * failure between clear and write leaving the Sheet truncated.
+ * Three cost tiers, which is the point of the per-tab digests:
+ *
+ *   nothing changed    0 requests  (an untouched dialog closed with Save, an undone
+ *                                   reorder — previously still cost a full round trip)
+ *   a task edited      2 requests  (read `tasks` + `meta`, write `tasks` + `meta`)
+ *   a tab shrank       3 requests  (the above, plus clearing the orphaned rows)
+ *
+ * Writes before clearing: a failure in between leaves stale rows below the real data,
+ * which the next save tidies, where the reverse order could truncate the Sheet.
  *
  * @param {{ spreadsheetId: string }} creds
- * @param {{ hash: string, tasks: any[], statuses: any[], categories: any[],
- *           priorities: any[], owners: any[], settings: Object }} payload
+ * @param {{ digests: Object<string,string>, tasks: any[], statuses: any[],
+ *           categories: any[], priorities: any[], owners: any[], settings: Object }} payload
+ *   `digests` is the board as it stood on the Sheet at the last read or write.
  */
 export async function saveBoard(creds, payload) {
-  const current = await readAll(creds)
+  const outgoing = toRows(payload)
+  const next = await tabDigests(outgoing)
+  const changed = changedTabs(payload.digests, next)
 
-  if (payload.hash !== (await hashOf(current.canons))) {
+  // Nothing to send. Worth the check: every dialog Save goes through here, including
+  // the ones where the user changed their mind and changed it back.
+  if (!changed.length) return { digests: payload.digests, written: [] }
+
+  // Only the tabs being written have to be proven untouched. A hand-edit to `owners`
+  // is no longer a reason to reject a task save.
+  const current = await read(creds, [...changed, 'meta'])
+  const onSheet = await tabDigests(current.rowsByTab)
+  const conflicts = changed.filter((tab) => onSheet[tab] !== payload.digests?.[tab])
+  if (conflicts.length) {
     throw new ApiError('Таблицю змінено деінде. Оновіть і повторіть.', 'stale')
   }
 
-  // Only tasks are reordered, to a deterministic order. categories/priorities/statuses
-  // keep the order the client holds: that order is the board's layout and the status
-  // progression, not a display nicety.
-  const outgoing = {
-    tasks: sortTasks(payload.tasks || []),
-    statuses: payload.statuses || [],
-    categories: payload.categories || [],
-    priorities: payload.priorities || [],
-    owners: payload.owners || [],
-    settings: settingsToRows(payload.settings),
-    meta: [{ key: 'schema_version', value: REQUIRED_SCHEMA_VERSION }, { key: 'updated_at', value: '' }],
-  }
+  outgoing.meta = [
+    { key: 'schema_version', value: REQUIRED_SCHEMA_VERSION },
+    { key: 'updated_at', value: new Date().toISOString() },
+  ]
+  const writing = [...changed, 'meta']
 
-  const nextCanons = canonByTab(outgoing)
-  const changed = TABS.filter((tab) => tab !== 'meta' && nextCanons[tab] !== current.canons[tab])
+  await call(`${API_ROOT}/${encodeURIComponent(creds.spreadsheetId)}/values:batchUpdate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    // RAW, so Sheets stores "2026-01-01" as the string it is instead of reading it as
+    // a date. This is what setNumberFormat('@') used to buy.
+    body: JSON.stringify({
+      valueInputOption: 'RAW',
+      data: writing.map((tab) => ({
+        range: `${tab}!A1`,
+        values: [COLS[tab], ...outgoing[tab].map((row) => COLS[tab].map((c) => (row[c] == null ? '' : String(row[c]))))],
+      })),
+    }),
+  })
 
-  // updated_at is stamped only when something actually changed, so a no-op save stays
-  // a no-op rather than dirtying the Sheet's own modified time.
-  if (changed.length) {
-    outgoing.meta[1].value = new Date().toISOString()
-    changed.push('meta')
-
-    await call(`${API_ROOT}/${encodeURIComponent(creds.spreadsheetId)}/values:batchUpdate`, {
+  const stale = tailRangesToClear(current.heights, outgoing, writing)
+  if (stale.length) {
+    await call(`${API_ROOT}/${encodeURIComponent(creds.spreadsheetId)}/values:batchClear`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // RAW, so Sheets stores "2026-01-01" as the string it is instead of reading it as
-      // a date. This is what setNumberFormat('@') used to buy.
-      body: JSON.stringify({
-        valueInputOption: 'RAW',
-        data: changed.map((tab) => ({
-          range: `${tab}!A1`,
-          values: [COLS[tab], ...outgoing[tab].map((row) => COLS[tab].map((c) => (row[c] == null ? '' : String(row[c]))))],
-        })),
-      }),
+      body: JSON.stringify({ ranges: stale }),
     })
-
-    const stale = tailRangesToClear(current.heights, outgoing, changed)
-    if (stale.length) {
-      await call(`${API_ROOT}/${encodeURIComponent(creds.spreadsheetId)}/values:batchClear`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ranges: stale }),
-      })
-    }
   }
 
-  return { hash: await hashOf(nextCanons), written: changed }
+  return { digests: { ...payload.digests, ...next }, written: changed }
 }
 
 /**

@@ -217,15 +217,24 @@ function scheduleSave() {
 }
 
 /**
- * Sends the whole board. Wrapped in `singleFlight`, so overlapping edits cannot put
- * two writes on the wire carrying the same hash.
+ * Hands the board to the sync layer, which works out which tabs actually differ and
+ * sends only those — often none at all. Wrapped in `singleFlight`, so overlapping
+ * edits cannot put two writes on the wire carrying the same digests.
+ *
+ * A snapshot from before per-tab digests existed has no `digests`, which would make
+ * every tab look changed and overwrite the Sheet blindly. Refresh instead; it costs
+ * one read, once.
  */
 const flushSave = singleFlight(
   async () => {
     if (!state.credentials || !state.snapshot) return
+    if (!state.snapshot.digests) {
+      await refresh()
+      return
+    }
 
     const payload = {
-      hash: state.snapshot.hash,
+      digests: state.snapshot.digests,
       tasks: state.snapshot.tasks,
       statuses: state.snapshot.statuses,
       categories: state.snapshot.categories,
@@ -240,7 +249,7 @@ const flushSave = singleFlight(
 
     try {
       const result = await saveBoard(state.credentials, payload)
-      const snapshot = { ...state.snapshot, hash: result.hash }
+      const snapshot = { ...state.snapshot, digests: result.digests }
       saveSnapshot(snapshot)
       clearPending()
       setState({ snapshot, dirty: false, sync: { status: 'ok' } })
@@ -254,7 +263,7 @@ const flushSave = singleFlight(
   { onRerun: () => scheduleSave() },
 )
 
-/** Re-reads to pick up the current hash, then re-sends the local edits. */
+/** Re-reads to pick up the Sheet's current digests, then re-sends the local edits. */
 async function retryAfterStale() {
   if (!state.credentials || !state.snapshot) return
   setState({ sync: { status: 'saving' } })
@@ -266,7 +275,7 @@ async function retryAfterStale() {
     setState({ sync: { status: 'error', message, code: 'network' } })
     return
   }
-  setState({ snapshot: { ...state.snapshot, hash: fresh.hash } })
+  setState({ snapshot: { ...state.snapshot, digests: fresh.digests } })
   await flushSave().catch(() => {})
 }
 

@@ -63,7 +63,11 @@ export function clearCredentials() {
   }
 }
 
-/** @returns {{ tasks: any[], statuses: any[], categories: any[], priorities: any[], owners: any[], settings: Object, hash: string, fetchedAt: number } | null} */
+/**
+ * @returns {{ tasks: any[], statuses: any[], categories: any[], priorities: any[],
+ *             owners: any[], settings: Object, digests: Object<string,string>,
+ *             fetchedAt: number } | null}
+ */
 export function loadSnapshot() {
   const s = read(KEY_SNAPSHOT)
   return s && Array.isArray(s.tasks) ? s : null

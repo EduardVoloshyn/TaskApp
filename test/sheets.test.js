@@ -1,6 +1,6 @@
 import { eq, ok, test } from './harness.js'
 import { COLS, settingsToRows, sortTasks } from '../src/sync/schema.js'
-import { isClientId, parseSpreadsheetId, rowsFromValues, tabCanon, tailRangesToClear } from '../src/sync/sheets.js'
+import { changedTabs, isClientId, parseSpreadsheetId, rowsFromValues, tabCanon, tailRangesToClear } from '../src/sync/sheets.js'
 
 /*
  * The Sheets backend, minus the parts that need a browser.
@@ -126,4 +126,37 @@ test('tailRangesToClear ignores tabs that were not written', () => {
   const ranges = tailRangesToClear({ tasks: 10, owners: 10 }, { tasks: [], owners: [] }, ['tasks'])
   eq(ranges.length, 1, 'an untouched tab must never be cleared')
   ok(ranges[0].startsWith('tasks!'))
+})
+
+/* -------------------------------------------------------- changed tabs ---- */
+
+/*
+ * What decides how many requests a save costs: no changed tabs means no requests at
+ * all, and only the changed ones are read back for the conflict check.
+ */
+
+const D = { tasks: 'a', statuses: 'b', categories: 'c', priorities: 'd', owners: 'e', settings: 'f' }
+
+test('changedTabs reports nothing when the board is untouched', () => {
+  eq(changedTabs(D, { ...D }).length, 0, 'an unchanged board must cost zero requests')
+})
+
+test('changedTabs isolates the one tab that moved', () => {
+  const after = changedTabs(D, { ...D, tasks: 'CHANGED' })
+  eq(after.length, 1)
+  eq(after[0], 'tasks', 'editing a task must not drag the dictionaries into the write')
+})
+
+test('changedTabs reports every tab that moved', () => {
+  const after = changedTabs(D, { ...D, tasks: 'x', owners: 'y' })
+  eq(after.sort().join(','), 'owners,tasks')
+})
+
+test('changedTabs never reports meta, which is rewritten every save by design', () => {
+  ok(!changedTabs(D, { ...D, meta: 'anything' }).includes('meta'))
+})
+
+test('changedTabs treats a missing digest as changed, so a pre-digest snapshot is not trusted', () => {
+  eq(changedTabs(undefined, D).length, 6, 'no previous digests must mean "assume everything differs"')
+  eq(changedTabs(D, { ...D, owners: undefined }).join(','), 'owners')
 })
