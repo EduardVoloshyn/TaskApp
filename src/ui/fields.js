@@ -14,9 +14,10 @@ import { progressBand } from './progress-bar.js'
  * A row of palette swatches. Colour is always a token, never a free value.
  *
  * @param {string} selected
+ * @param {(token: string) => void} [onChange] so a collapsed trigger can follow along
  * @returns {{ node: HTMLElement, value: () => string }}
  */
-export function colourField(selected) {
+export function colourField(selected, onChange) {
   let colour = PALETTE.includes(selected) ? selected : 'slate'
 
   const node = el('div', 'swatches')
@@ -28,6 +29,7 @@ export function colourField(selected) {
       colour = token
       for (const other of buttons) other.classList.remove('swatch--on')
       button.classList.add('swatch--on')
+      onChange?.(colour)
     })
     return button
   })
@@ -41,9 +43,10 @@ export function colourField(selected) {
  *
  * @param {string} selected
  * @param {string[]} choices
+ * @param {(icon: string) => void} [onChange] so a collapsed trigger can follow along
  * @returns {{ node: HTMLElement, value: () => string }}
  */
-export function iconField(selected, choices = []) {
+export function iconField(selected, choices = [], onChange) {
   let icon = selected ?? ''
   const buttons = []
   const node = el('div', 'icons')
@@ -81,6 +84,7 @@ export function iconField(selected, choices = []) {
       icon = button.dataset.icon ?? ''
       for (const other of buttons) other.classList.remove('icons__pick--on')
       button.classList.add('icons__pick--on')
+      onChange?.(icon)
     })
   }
 
@@ -292,6 +296,50 @@ export function tickPlacements(statuses, minGap = 10) {
   })
 
   return out
+}
+
+/**
+ * A picker folded behind a button that shows what is currently chosen.
+ *
+ * Native `<details>`, so it opens by keyboard and needs no JS to toggle. The colour
+ * swatches and the 33-button emoji grid together ran to ~120px of a 610px dialog and
+ * are the two things changed least often — collapsed, they cost one line.
+ *
+ * `face` is the caller's to fill and refill: only it knows how to say "Бурштиновий"
+ * or draw the chosen glyph.
+ *
+ * @param {string} label
+ * @param {HTMLElement} panel the full picker, shown when open
+ * @param {{ onOpen?: () => void }} [options] fires when this one opens, so a sibling
+ *   picker can close itself — two popovers over the same form overlap.
+ * @returns {{ node: HTMLElement, face: HTMLElement, close: () => void,
+ *             describe: (text: string) => void }}
+ */
+export function pickerField(label, panel, { onOpen } = {}) {
+  const details = el('details', 'picker')
+  const summary = el('summary', 'picker__trigger')
+  const face = el('span', 'picker__face')
+
+  append(summary, face, el('span', 'picker__chev'))
+  append(details, summary, append(el('div', 'picker__panel'), panel))
+
+  // A div, not the <label> field() uses: a label wrapping a <summary> swallows the
+  // click that should open it.
+  const node = append(el('div', 'field'), el('span', undefined, undefined, label), details)
+
+  details.addEventListener('toggle', () => { if (details.open) onOpen?.() })
+
+  return {
+    node,
+    face,
+    close: () => { details.open = false },
+    // The colour trigger is a bare dot, so the choice has to be said out loud
+    // somewhere for anything that is not looking at it.
+    describe: (text) => {
+      summary.setAttribute('aria-label', `${label}: ${text}`)
+      summary.title = text
+    },
+  }
 }
 
 /** @param {string} label @param {HTMLElement} control */

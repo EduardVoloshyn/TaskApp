@@ -11,6 +11,18 @@
 /** Colour is always a token, never a free value — shared by Status rows and cards. */
 export const PALETTE = ['slate', 'blue', 'red', 'amber', 'green', 'violet', 'teal', 'rose']
 
+/** For the collapsed colour picker, which has to say which colour is chosen in words. */
+export const PALETTE_NAMES = {
+  slate: 'Сірий',
+  blue: 'Синій',
+  red: 'Червоний',
+  amber: 'Бурштиновий',
+  green: 'Зелений',
+  violet: 'Фіолетовий',
+  teal: 'Бірюзовий',
+  rose: 'Рожевий',
+}
+
 /**
  * The curated emoji offered by every icon picker (Statuses in Settings, and a task's
  * own icon) — one shared list so the same glyphs mean the same thing everywhere.

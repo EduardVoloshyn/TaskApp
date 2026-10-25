@@ -12,7 +12,7 @@
  * BUMP `VERSION` whenever any precached file changes, or clients keep the old copy.
  */
 
-const VERSION = 'v12'
+const VERSION = 'v15'
 const CACHE = `taskapp-${VERSION}`
 
 const SHELL = [

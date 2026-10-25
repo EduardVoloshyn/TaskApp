@@ -194,19 +194,31 @@ body {
 /* --------------------------------------------------------------- task-card ---- */
 
 .task-card {
-  padding: 0.35rem 0.5rem;
+  /* No top padding: the progress strip is the card's own top edge, full bleed.
+     `overflow: hidden` is what lets it meet the rounded corners cleanly. */
+  padding: 0 0.5rem 0.3rem;
   border: 1px solid var(--card-line);
   border-left: 2px solid var(--card-line);
   border-radius: var(--radius);
   background: var(--card-bg);
   color: var(--card-ink);
+  overflow: hidden;
 }
+/* A completed card has no strip, so it needs its top padding back. */
+.task-card--completed { padding-top: 0.35rem; }
 
 .task-card__heading {
   overflow-wrap: anywhere;
   font-size: var(--text-sm);
   font-weight: 500;
   line-height: 1.25;
+  /* Two lines, then ellipsis. Long names wrapping to three and four lines were what
+     actually made the board tall — far more than any padding. The full text stays in
+     the card's title attribute and in the dialog. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* Completed: a single glanceable line, not a readable multi-line card — truncate
@@ -239,9 +251,10 @@ body {
    not this container). */
 .task-card__meta-row {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--gap-2);
-  margin: 0.2rem 0;
+  margin: 0.1rem 0 0;
+  font-size: var(--text-xs);
 }
 
 .task-card__due { margin-left: auto; }
@@ -254,11 +267,14 @@ body {
    the card, so laid straight over it they vanished and the track looked like it just
    stopped; `--surface` puts them back on neutral ground, and the groove over it gives
    the uncovered stretch the same grey the dialog has. */
+/* Full bleed across the card's top edge: negative margins pull it out past the side
+   padding, and only the bottom corners are rounded so it sits flush in the card's own
+   radius. Being the edge rather than a strip inside saves a whole line of height. */
 .task-card__progress {
   position: relative;
-  height: 6px;
-  margin-bottom: 0.3rem;
-  border-radius: 3px;
+  height: 4px;
+  margin: 0 -0.5rem 0.28rem;
+  border-radius: 0 0 2px 2px;
   overflow: hidden;
   background-color: var(--surface);
   background-image: linear-gradient(var(--progress-groove), var(--progress-groove));
@@ -773,14 +789,14 @@ body {
   border-radius: 4px;
   background: var(--surface);
   border: 1.5px solid var(--ink-quiet);
-  box-shadow: 0 1px 3px rgb(34 37 42 / 22%);
+  box-shadow: 0 1px 3px var(--shadow);
 }
 .progress__range::-moz-range-thumb {
   width: 14px; height: 22px;
   border-radius: 4px;
   background: var(--surface);
   border: 1.5px solid var(--ink-quiet);
-  box-shadow: 0 1px 3px rgb(34 37 42 / 22%);
+  box-shadow: 0 1px 3px var(--shadow);
 }
 .progress__range:focus-visible { outline: 2px solid var(--blue-ink); outline-offset: 3px; border-radius: 5px; }
 
@@ -813,3 +829,84 @@ body {
 .progress__seg--violet { --seg-bg: var(--violet-bg); --seg-fill: var(--violet-fill); }
 .progress__seg--teal   { --seg-bg: var(--teal-bg);   --seg-fill: var(--teal-fill); }
 .progress__seg--rose   { --seg-bg: var(--rose-bg);   --seg-fill: var(--rose-fill); }
+
+/* -------------------------------------------------------------------- picker ---- */
+
+/*
+ * A colour or emoji picker folded behind a button showing the current choice.
+ *
+ * Native <details>, so it opens by keyboard and needs no script. Open, the swatch row
+ * and the 33-button emoji grid were ~120px of a 610px dialog, and they are the two
+ * fields changed least often — collapsed they cost one line between them.
+ */
+
+.picker { position: relative; }
+
+.picker__trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.5rem;
+  font-size: var(--text-sm);
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+  list-style: none;
+}
+/* Both are needed: the pseudo-element is WebKit's, `list-style` covers the rest. */
+.picker__trigger::-webkit-details-marker { display: none; }
+.picker__trigger:focus-visible { outline: 2px solid var(--blue-ink); outline-offset: 2px; }
+
+.picker__face {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  min-width: 0;
+}
+/* A third of the dialog is narrow; a long colour name truncates rather than wrapping
+   the button onto a second line and breaking the row's alignment. */
+.picker__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker__text--quiet { color: var(--ink-faint); }
+.picker__glyph { font-size: var(--text-md); line-height: 1; }
+
+.picker__dot {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--swatch-bg);
+  border: 1px solid var(--swatch-line);
+}
+
+.picker__chev {
+  flex: none;
+  margin-left: auto;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-bottom: 0.15rem;
+  border-right: 1.5px solid var(--ink-faint);
+  border-bottom: 1.5px solid var(--ink-faint);
+  transform: rotate(45deg);
+}
+.picker[open] .picker__chev { transform: rotate(-135deg); margin-bottom: -0.1rem; }
+
+/* Floated over the form, not inserted into it: in flow, opening a picker pushed every
+   field below it down the dialog, which is disorienting when you are only glancing at
+   the options. Wider than its trigger too, so the emoji grid is not squeezed into the
+   three columns a third-width field allows. */
+.picker__panel {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + var(--gap-2));
+  left: 0;
+  min-width: max(100%, 16rem);
+  padding: var(--gap-2);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 6px 20px var(--shadow);
+}

@@ -1,7 +1,7 @@
-import { ICON_CHOICES } from '../model/refs.js'
-import { append, el } from './dom.js'
+import { ICON_CHOICES, PALETTE_NAMES } from '../model/refs.js'
+import { append, clear, el } from './dom.js'
 import { ICON, actionButton } from './buttons.js'
-import { colourField, dateField, field, iconField, progressField, refSelectField, row, textArea, textInput } from './fields.js'
+import { colourField, dateField, field, iconField, pickerField, progressField, refSelectField, row, textArea, textInput } from './fields.js'
 
 /**
  * The task add/edit dialog.
@@ -25,9 +25,43 @@ export function taskDialog({
   name.className = 'sheet__title-input'
 
   // The task's own look — independent of its Status, which is shown below as a
-  // progress bar rather than a colour.
-  const colour = colourField(task.color || 'slate')
-  const icon = iconField(task.icon ?? '', ICON_CHOICES)
+  // progress bar rather than a colour. Both pickers are folded behind a button
+  // showing the current choice: open, they were ~120px of the dialog, and they are
+  // the two fields changed least often.
+  const colour = colourField(task.color || 'slate', (token) => {
+    paintColour(token)
+    colourPicker.close()
+  })
+  const colourPicker = pickerField('Колір', colour.node, { onOpen: () => iconPicker.close() })
+
+  const icon = iconField(task.icon ?? '', ICON_CHOICES, (glyph) => {
+    paintIcon(glyph)
+    iconPicker.close()
+  })
+  const iconPicker = pickerField('Емодзі', icon.node, { onOpen: () => colourPicker.close() })
+
+  function paintColour(token) {
+    // The dot alone — the name made the trigger wrap onto two lines at a third of the
+    // dialog's width, and a coloured ball already says which colour it is. The name
+    // lives on as the accessible label and the tooltip.
+    clear(colourPicker.face)
+    append(colourPicker.face, el('span', `picker__dot swatch--${token}`))
+    colourPicker.describe(PALETTE_NAMES[token] ?? token)
+  }
+
+  function paintIcon(glyph) {
+    clear(iconPicker.face)
+    append(
+      iconPicker.face,
+      glyph
+        ? el('span', 'picker__glyph', undefined, glyph)
+        : el('span', 'picker__text picker__text--quiet', undefined, 'без емодзі'),
+    )
+    iconPicker.describe(glyph || 'без емодзі')
+  }
+
+  paintColour(colour.value())
+  paintIcon(icon.value())
 
   const status = refSelectField(task.status_id, statuses, '— без статусу —')
   const category = refSelectField(task.category_id, categories, undefined, { required: true })
@@ -81,12 +115,10 @@ export function taskDialog({
     form,
     el('h2', 'sheet__heading', undefined, isNew ? 'Нове завдання' : 'Завдання'),
     field('Назва', name),
-    field('Колір', colour.node),
-    field('Емодзі', icon.node),
+    row(colourPicker.node, iconPicker.node, field('Термін', dueDate)),
     row(field('Статус', status.node), field('Категорія *', category.node)),
     row(field('Пріоритет *', priority.node), field('Виконавець', owner.node)),
     progress.node,
-    field('Термін виконання', dueDate),
     field('Нотатки', notes),
     append(
       el('div', 'sheet__actions'),

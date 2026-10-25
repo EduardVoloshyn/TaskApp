@@ -4,7 +4,7 @@ import { installDom } from './dom-stub.js'
 installDom()
 
 const { board } = await import('../src/ui/board.js')
-const { taskCard } = await import('../src/ui/task-card.js')
+const { taskCard, shortDate } = await import('../src/ui/task-card.js')
 const { refPanel } = await import('../src/ui/ref-panel.js')
 const { filterBar } = await import('../src/ui/filter-bar.js')
 const { taskDialog } = await import('../src/ui/task-dialog.js')
@@ -105,6 +105,29 @@ test('taskCard does not collapse a task on a non-last status', () => {
   const node = taskCard(task, { statuses, todayIso: '2026-01-01' })
   eq(node.className.includes('task-card--completed'), false)
   ok(node.find('task-card__progress'))
+})
+
+test('a long name is clamped visually but kept whole in the tooltip', () => {
+  const long = 'НОВІ конкурси Каталог з датами (InfomatrixUk Bennington) і ще трохи тексту'
+  const node = taskCard(createTask({ id: 't1', name: long }), { statuses: [], todayIso: '2026-10-25' })
+  // The clamp itself is CSS (-webkit-line-clamp); what must hold here is that nothing
+  // truncates the underlying text, so the title still carries all of it.
+  eq(node.title, long)
+  eq(node.find('task-card__name').textContent, long)
+})
+
+test('the due date drops the parts that carry no information', () => {
+  eq(shortDate('2026-10-22', '2026-10-25'), '22.10', 'same year: day and month only')
+  eq(shortDate('2027-01-09', '2026-10-25'), '09.01.27', 'another year has to say so')
+  eq(shortDate('', '2026-10-25'), '', 'no date, nothing to shorten')
+  eq(shortDate('next tuesday', '2026-10-25'), 'next tuesday', 'the Sheet is hand-editable — pass it through')
+})
+
+test('the card shows the short date but keeps the full one in its tooltip', () => {
+  const task = createTask({ id: 't1', name: 'T', due_date: '2026-10-22' })
+  const node = taskCard(task, { statuses: [], todayIso: '2026-10-25' })
+  eq(node.find('task-card__due').textContent, '22.10')
+  eq(node.find('task-card__due').title, '2026-10-22')
 })
 
 test('taskCard marks a past due date as overdue', () => {
@@ -338,6 +361,87 @@ test('taskDialog defaults to the first category/priority and allows saving', () 
   dialog.find('sheet__form').dispatch('submit', { preventDefault: () => {} })
   eq(saved.category_id, 'c1')
   eq(saved.priority_id, 'p1')
+})
+
+/* ------------------------------------------------------------ folded pickers ---- */
+
+const pickerFaces = (dialog) => dialog.findAll('picker__face').map((f) => f.textContent)
+
+test('the colour and emoji pickers start folded, showing the current choice', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', color: 'amber', icon: '🦜' })
+  const dialog = taskDialog({
+    task, isNew: false, statuses: [], categories: refCategories, priorities: refPriorities, owners: [],
+    onSave: () => {},
+  })
+
+  const folded = dialog.findAll('picker')
+  eq(folded.length, 2, 'colour and emoji')
+  ok(folded.every((p) => !p.open), 'both must start closed, or nothing is saved')
+
+  // The colour trigger is a bare dot: the name would wrap it onto a second line at a
+  // third of the dialog's width. It has to stay announceable, hence the label.
+  const dot = dialog.find('picker__dot')
+  ok(dot.className.includes('swatch--amber'), `dot was "${dot.className}"`)
+  eq(dialog.findAll('picker__trigger')[0].title, 'Бурштиновий')
+  ok(pickerFaces(dialog)[1].includes('🦜'), `emoji face was "${pickerFaces(dialog)[1]}"`)
+
+  // Folded or not, the real pickers are present and still drive the saved value.
+  ok(dialog.find('swatches'), 'the swatch row is in the panel, not removed')
+  ok(dialog.find('icons'), 'the emoji grid is in the panel, not removed')
+})
+
+test('a task with no emoji says so rather than showing an empty button', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1' })
+  const dialog = taskDialog({
+    task, isNew: false, statuses: [], categories: refCategories, priorities: refPriorities, owners: [],
+    onSave: () => {},
+  })
+  ok(pickerFaces(dialog)[1].includes('без емодзі'), pickerFaces(dialog)[1])
+})
+
+test('picking a colour updates the folded face and still saves', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', color: 'amber' })
+  let saved = null
+  const dialog = taskDialog({
+    task, isNew: false, statuses: [], categories: refCategories, priorities: refPriorities, owners: [],
+    onSave: (values) => { saved = values },
+  })
+
+  const green = dialog.findAll('swatch').find((s) => s.className.includes('swatch--green'))
+  green.dispatch('click', {})
+  ok(dialog.find('picker__dot').className.includes('swatch--green'), dialog.find('picker__dot').className)
+  eq(dialog.findAll('picker__trigger')[0].title, 'Зелений', 'the label must follow the choice')
+
+  dialog.find('sheet__form').dispatch('submit', { preventDefault: () => {} })
+  eq(saved.color, 'green')
+})
+
+test('opening one picker closes the other', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1' })
+  const dialog = taskDialog({
+    task, isNew: false, statuses: [], categories: refCategories, priorities: refPriorities, owners: [],
+    onSave: () => {},
+  })
+  const [colour, emoji] = dialog.findAll('picker')
+
+  colour.open = true
+  colour.dispatch('toggle', {})
+  emoji.open = true
+  emoji.dispatch('toggle', {})
+
+  eq(colour.open, false, 'both panels float over the form — two at once would overlap')
+  ok(emoji.open)
+})
+
+test('the due date sits in the pickers row, not on a line of its own', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', due_date: '2026-10-22' })
+  const dialog = taskDialog({
+    task, isNew: false, statuses: [], categories: refCategories, priorities: refPriorities, owners: [],
+    onSave: () => {},
+  })
+  const firstRow = dialog.findAll('sheet__row')[0]
+  eq(firstRow.findAll('picker').length, 2)
+  ok(firstRow.textContent.includes('Термін'), 'the date field shares the row with the two pickers')
 })
 
 test('taskDialog offers Duplicate for an existing task, not a new one', () => {

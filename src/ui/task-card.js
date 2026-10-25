@@ -58,7 +58,8 @@ export function taskCard(task, { statuses = [], owner, editing = false, todayIso
   const ownerEl = owner && el('div', 'task-card__meta', undefined, owner.name)
   const overdue = Boolean(task.due_date) && task.due_date < todayIso
   const due = task.due_date &&
-    el('div', `task-card__due${overdue ? ' task-card__due--overdue' : ''}`, undefined, task.due_date)
+    el('div', `task-card__due${overdue ? ' task-card__due--overdue' : ''}`, undefined, shortDate(task.due_date, todayIso))
+  if (due) due.title = task.due_date
 
   // Owner on the left, due date pushed to the far right of the same line
   // (margin-left: auto on .task-card__due).
@@ -67,4 +68,20 @@ export function taskCard(task, { statuses = [], owner, editing = false, todayIso
   }
 
   return node
+}
+
+/**
+ * `2026-10-22` -> `22.10`, with the year kept only when it is not the current one.
+ *
+ * The full ISO date is nine characters of a narrow card, and on a board where almost
+ * everything is due this month the year and month-prefix are the parts carrying no
+ * information. Anything that does not look like an ISO date is passed through as-is
+ * rather than mangled — the Sheet is hand-editable.
+ */
+export function shortDate(iso, todayIso) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  if (!match) return iso
+
+  const [, year, month, day] = match
+  return year === String(todayIso).slice(0, 4) ? `${day}.${month}` : `${day}.${month}.${year.slice(2)}`
 }

@@ -57,6 +57,9 @@
    * stages ahead are pale enough to disappear into the ground behind them. */
   --progress-edge: rgb(34 37 42 / 28%);
 
+  /* Shadow ink, for the few raised surfaces: a slider thumb, a picker popover. */
+  --shadow: rgb(34 37 42 / 22%);
+
   /* type */
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --text-xs: 0.6875rem;
@@ -115,6 +118,9 @@
     /* A hairline round a progress track, so its full extent stays readable when the
      * stages ahead are pale enough to disappear into the ground behind them. */
     --progress-edge: rgb(255 255 255 / 30%);
+
+    /* Shadow ink, for the few raised surfaces: a slider thumb, a picker popover. */
+    --shadow: rgb(0 0 0 / 55%);
   }
 }
 
@@ -156,4 +162,7 @@
   /* A hairline round a progress track, so its full extent stays readable when the
    * stages ahead are pale enough to disappear into the ground behind them. */
   --progress-edge: rgb(255 255 255 / 30%);
+
+  /* Shadow ink, for the few raised surfaces: a slider thumb, a picker popover. */
+  --shadow: rgb(0 0 0 / 55%);
 }
