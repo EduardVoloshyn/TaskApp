@@ -49,7 +49,9 @@ jobs:
           # Cheap insurance. The app asks for the spreadsheet id and OAuth client id
           # per device and keeps them in localStorage; neither should ever be baked
           # into a published file, and a private key never should either.
-          if grep -rIlE 'apps\.googleusercontent\.com|BEGIN [A-Z ]*PRIVATE KEY|"private_key"' _site; then
+          # The numeric project prefix is what makes it a real client id — matching
+          # the bare domain also hit the setup screen's own placeholder text.
+          if grep -rIlE '[0-9]{8,}-[A-Za-z0-9_-]{16,}\.apps\.googleusercontent\.com|BEGIN [A-Z ]*PRIVATE KEY|"private_key"' _site; then
             echo "::error::a credential-looking string reached the published site"
             exit 1
           fi
