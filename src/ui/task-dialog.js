@@ -1,7 +1,7 @@
 import { ICON_CHOICES } from '../model/refs.js'
 import { append, el } from './dom.js'
 import { ICON, actionButton } from './buttons.js'
-import { colourField, dateField, field, iconField, refSelectField, row, textArea, textInput } from './fields.js'
+import { colourField, dateField, field, iconField, progressField, refSelectField, row, textArea, textInput } from './fields.js'
 
 /**
  * The task add/edit dialog.
@@ -36,6 +36,13 @@ export function taskDialog({
   const dueDate = dateField(task.due_date ?? '')
   const notes = textArea(task.notes ?? '')
 
+  // Progress belongs to the chosen status: picking one snaps the value to that stage's
+  // start, and the slider is then bounded by the stage — from its own start up to just
+  // below the next status's, or to 100% for the last, the only stage that can read as
+  // finished. The control draws its own caption, so it gets no field() label.
+  const progress = progressField(task.progress_percent ?? 0, statuses, task.status_id)
+  status.node.addEventListener('change', () => progress.setStatus(status.value()))
+
   const save = actionButton({ icon: ICON.save, label: 'Зберегти', kind: 'primary', type: 'submit' })
 
   // Category and priority are the board's two axes — a task without both has nowhere
@@ -63,6 +70,7 @@ export function taskDialog({
       owner_id: owner.value(),
       due_date: dueDate.value,
       notes: notes.value,
+      progress_percent: progress.value(),
     })
     dialog.close()
   })
@@ -77,6 +85,7 @@ export function taskDialog({
     field('Емодзі', icon.node),
     row(field('Статус', status.node), field('Категорія *', category.node)),
     row(field('Пріоритет *', priority.node), field('Виконавець', owner.node)),
+    progress.node,
     field('Термін виконання', dueDate),
     field('Нотатки', notes),
     append(

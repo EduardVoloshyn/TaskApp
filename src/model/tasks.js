@@ -19,8 +19,8 @@ export function createTask(spec) {
   return {
     id: spec.id ?? newId(),
     name: (spec.name ?? '').trim(),
-    // A task's own colour/icon are independent of its Status's — Status is shown as the
-    // progress bar (see statusProgress below); colour/icon are the card's own look.
+    // A task's own colour/icon are independent of its Status's — Status drives the
+    // progress strip; colour/icon are the card's own look.
     color: (spec.color ?? '').trim(),
     icon: (spec.icon ?? '').trim(),
     status_id: (spec.status_id ?? '').trim(),
@@ -29,6 +29,9 @@ export function createTask(spec) {
     owner_id: (spec.owner_id ?? '').trim(),
     due_date: (spec.due_date ?? '').trim(),
     notes: (spec.notes ?? '').trim(),
+    // A fraction 0..1, mirroring a Status's start_percent. Stored rather than derived
+    // because the user can nudge it within the current stage.
+    progress_percent: toFraction(spec.progress_percent),
   }
 }
 
@@ -59,6 +62,7 @@ export function updateTask(tasks, id, patch) {
     if (patch.owner_id !== undefined) next.owner_id = String(patch.owner_id).trim()
     if (patch.due_date !== undefined) next.due_date = String(patch.due_date).trim()
     if (patch.notes !== undefined) next.notes = String(patch.notes).trim()
+    if (patch.progress_percent !== undefined) next.progress_percent = toFraction(patch.progress_percent)
     return next
   })
 }
@@ -93,26 +97,72 @@ export function partitionUsable(tasks) {
   return { usable, dropped }
 }
 
+/* ---------------------------------------------------------------- progress ---- */
+
 /**
- * The status-as-progress-bar data: one entry per defined Status, in the same order as
- * the Settings list (that order is what makes "stage 3 of 5" mean anything), each
- * marked `filled` for every position up to and including the task's current status. A
- * task with no status, or one naming a status that's been deleted, has nothing filled
- * — the bar still shows every stage, just entirely empty, rather than disappearing.
- *
- * @param {ReadonlyArray<{id: string, name: string, color: string}>} statuses
- * @param {Object} task
- * @returns {Array<{id: string, name: string, color: string, filled: boolean}>}
+ * Progress is stored as a fraction 0..1 (same unit as a Status's `start_percent`) and
+ * shown as a whole percent. Keeping one conversion point stops the two units drifting
+ * apart across the dialog, the card and the Sheet.
  */
-export function statusProgress(statuses, task) {
-  const currentIndex = statuses.findIndex((s) => s.id === task.status_id)
-  return statuses.map((s, i) => ({ ...s, filled: currentIndex >= 0 && i <= currentIndex }))
+export function toFraction(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return 0
+  return Math.min(1, Math.max(0, n))
+}
+
+export function toPercent(fraction) {
+  return Math.round(toFraction(fraction) * 100)
+}
+
+export function fromPercent(percent) {
+  const n = Number(percent)
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) / 100 : 0
+}
+
+/**
+ * The whole-percent range a task may sit in, given its status.
+ *
+ * A status owns the span from its own `start_percent` up to just below the next
+ * status's — list order is the stage sequence, so "the next status" is literally the
+ * next entry. The LAST status is the exception: nothing follows it, so it runs to 100%,
+ * which is also the only way a task can ever read as fully done.
+ *
+ * A task with no status (or one naming a deleted status) is unconstrained: there is no
+ * stage to bound it, and refusing to show a value would look like data loss.
+ *
+ * `Math.max(min, …)` guards a misconfigured sequence where a later status starts lower
+ * than an earlier one — the range collapses to a single value instead of inverting.
+ *
+ * @param {ReadonlyArray<{id: string, start_percent?: number}>} statuses
+ * @param {string} statusId
+ * @returns {{ min: number, max: number }} whole percents, both inclusive
+ */
+export function progressBounds(statuses, statusId) {
+  const index = statuses.findIndex((s) => s.id === statusId)
+  if (index === -1) return { min: 0, max: 100 }
+
+  const min = toPercent(statuses[index].start_percent)
+  if (index === statuses.length - 1) return { min, max: 100 }
+
+  return { min, max: Math.max(min, toPercent(statuses[index + 1].start_percent) - 1) }
+}
+
+/** The value progress snaps to when a task is moved into a status. */
+export function progressForStatus(statuses, statusId) {
+  const status = statuses.find((s) => s.id === statusId)
+  return status ? toFraction(status.start_percent) : 0
+}
+
+/** Pulls a fraction into the range its status allows. */
+export function clampProgress(fraction, statuses, statusId) {
+  const { min, max } = progressBounds(statuses, statusId)
+  return fromPercent(Math.min(max, Math.max(min, toPercent(fraction))))
 }
 
 /**
  * A task counts as "completed" when its status is the LAST entry in the Settings
  * Statuses list — purely derived from existing data, nothing new to store or migrate.
- * Mirrors statusProgress's rule that list order is what "last stage" means.
+ * List order is what "last stage" means, the same order progressBounds walks.
  *
  * @param {Object} task
  * @param {ReadonlyArray<{id: string}>} statuses

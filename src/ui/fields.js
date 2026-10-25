@@ -1,5 +1,7 @@
 import { PALETTE } from '../model/refs.js'
+import { progressBounds, progressForStatus, toPercent } from '../model/tasks.js'
 import { append, el } from './dom.js'
+import { progressBand } from './progress-bar.js'
 
 /*
  * Form controls shared by the task dialog and the reference-list editors.
@@ -130,6 +132,166 @@ export function refSelectField(selected, options = [], noneLabel = '— нема
   }
 
   return { node, value: () => node.value }
+}
+
+/**
+ * A whole-percent spinner over a fraction.
+ *
+ * The model stores 0..1 (so a Status's start and a task's progress share one unit), but
+ * nobody wants to type 0.45 — so this shows 45 and converts at the edge. `bounds` are
+ * inclusive whole percents; the value is clamped on the way out as well as constrained
+ * in the markup, because `min`/`max` on a number input are advisory in several browsers.
+ *
+ * @param {number} fraction
+ * @param {{ min?: number, max?: number }} [bounds]
+ * @returns {{ node: HTMLInputElement, value: () => number, setBounds: (b: Object) => void,
+ *            set: (fraction: number) => void }}
+ */
+export function percentField(fraction, bounds = {}) {
+  let min = bounds.min ?? 0
+  let max = bounds.max ?? 100
+
+  const node = /** @type {HTMLInputElement} */ (el('input', 'percent-input'))
+  node.type = 'number'
+  node.step = '1'
+  node.autocomplete = 'off'
+
+  const clamp = (percent) => Math.min(max, Math.max(min, Math.round(Number(percent) || 0)))
+
+  const paint = (percent) => {
+    node.min = String(min)
+    node.max = String(max)
+    node.value = String(clamp(percent))
+  }
+  paint(Math.round((Number(fraction) || 0) * 100))
+
+  node.addEventListener('blur', () => paint(node.value))
+
+  return {
+    node,
+    value: () => clamp(node.value) / 100,
+    setBounds: (next) => {
+      min = next.min ?? 0
+      max = next.max ?? 100
+      paint(node.value)
+    },
+    set: (next) => paint(Math.round((Number(next) || 0) * 100)),
+  }
+}
+
+/**
+ * The task's progress: a slider over the Status stages, coloured by them.
+ *
+ * The slider spans the whole 0..100 so it shares one coordinate space with the painted
+ * track; the current stage's limit is applied in the input handler instead of through
+ * min/max. Narrowing min/max to the stage instead looks equivalent and is not — the
+ * thumb would then travel the full width across a fraction of the scale, and drift
+ * badly away from the fill it is supposed to sit on.
+ *
+ * Changing status snaps the value to that stage's start, which is why `setStatus` is
+ * part of the returned handle rather than the caller poking at the node.
+ *
+ * @param {number} fraction 0..1
+ * @param {ReadonlyArray<{id: string, name: string, color: string, start_percent?: number}>} statuses
+ * @param {string} statusId
+ * @returns {{ node: HTMLElement, value: () => number, setStatus: (id: string) => void }}
+ */
+export function progressField(fraction, statuses = [], statusId = '') {
+  let current = statusId
+  let percent = toPercent(fraction)
+
+  const root = el('div', 'progress')
+
+  const caption = el('div', 'progress__caption')
+  const stage = el('span', 'progress__stage')
+  const value = el('span', 'progress__value')
+  append(
+    caption,
+    el('span', undefined, undefined, 'Поточний прогрес виконання: '),
+    stage,
+    el('span', undefined, undefined, ' '),
+    value,
+  )
+
+  const track = el('div', 'progress__track')
+  const band = progressBand(statuses)
+
+  const range = /** @type {HTMLInputElement} */ (el('input', 'progress__range'))
+  range.type = 'range'
+  range.min = '0'
+  range.max = '100'
+  range.step = '1'
+  // No visible <label>: the caption above carries the meaning for sighted users.
+  range.setAttribute('aria-label', 'Прогрес виконання, відсоток')
+  append(track, band.node, range)
+
+  const ticks = el('div', 'progress__ticks')
+  const tickNodes = tickPlacements(statuses).map((t) => {
+    const node = el('div', 'progress__tick', t.style, `${t.at} %`)
+    append(ticks, node)
+    return { id: t.id, node }
+  })
+
+  function paint() {
+    const bounds = progressBounds(statuses, current)
+    percent = Math.min(bounds.max, Math.max(bounds.min, percent))
+
+    range.value = String(percent)
+    range.setAttribute('aria-valuetext', `${percent} %`)
+    band.setPercent(percent)
+    value.textContent = `${percent} %`
+
+    const status = statuses.find((s) => s.id === current)
+    stage.textContent = status ? status.name : 'без статусу'
+    root.className = `progress${status && PALETTE.includes(status.color) ? ` progress--${status.color}` : ''}`
+
+    for (const tick of tickNodes) {
+      tick.node.className = `progress__tick${tick.id === current ? ' progress__tick--on' : ''}`
+    }
+  }
+
+  range.addEventListener('input', () => {
+    percent = Number(range.value)
+    paint()
+  })
+
+  append(root, caption, track, ticks)
+  paint()
+
+  return {
+    node: root,
+    value: () => percent / 100,
+    setStatus: (id) => {
+      current = id
+      percent = toPercent(progressForStatus(statuses, id))
+      paint()
+    },
+  }
+}
+
+/**
+ * Which stage starts get a printed number, and how each one is anchored.
+ *
+ * Labels are centred on their boundary, clamped at both ends so they cannot spill out
+ * of the track, and dropped when they would land on top of the previous one — stages
+ * can start a few percent apart (95 and 100 collided into "95 %100"), and two numbers
+ * sharing the same pixels is worse than one number missing.
+ */
+export function tickPlacements(statuses, minGap = 10) {
+  const out = []
+  let lastAt = -Infinity
+
+  statuses.forEach((s) => {
+    const at = toPercent(s.start_percent)
+    if (at - lastAt < minGap) return
+    lastAt = at
+
+    if (at <= 5) out.push({ id: s.id, at, style: { left: '0' } })
+    else if (at >= 95) out.push({ id: s.id, at, style: { right: '0' } })
+    else out.push({ id: s.id, at, style: { left: `${at}%`, transform: 'translateX(-50%)' } })
+  })
+
+  return out
 }
 
 /** @param {string} label @param {HTMLElement} control */

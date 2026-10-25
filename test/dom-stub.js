@@ -165,6 +165,22 @@ export function installDom(options = {}) {
     removeEventListener: () => {},
   }
 
+  // The boot suite renders from the cached snapshot; it must never reach the network.
+  // Failing auth immediately is the fastest honest way to guarantee that — otherwise
+  // app.js's startup refresh waits out gisWhenReady's poll for the Google script.
+  globalThis.google = {
+    accounts: {
+      oauth2: {
+        initTokenClient: () => ({
+          requestAccessToken() {
+            this.error_callback?.({ type: 'stub' })
+          },
+        }),
+        revoke: () => {},
+      },
+    },
+  }
+
   globalThis.localStorage = {
     getItem: (k) => (k in store ? store[k] : null),
     setItem: (k, v) => {

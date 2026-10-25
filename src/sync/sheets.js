@@ -26,6 +26,7 @@
 
 import { COLS, TABS, rowsToSettings, settingsToRows, sortTasks } from './schema.js'
 import { REQUIRED_SCHEMA_VERSION } from '../version.js'
+import { toFraction } from '../model/tasks.js'
 
 const API_ROOT = 'https://sheets.googleapis.com/v4/spreadsheets'
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
@@ -39,6 +40,9 @@ const RENEW_BEFORE_MS = 10 * 60 * 1000
 
 /** And if a renewal fails, wait this long before letting another click try again. */
 const RENEW_COOLDOWN_MS = 60 * 1000
+
+/** How long to wait for the Google script tag, which loads async. */
+const GIS_WAIT_MS = 4000
 
 export class ApiError extends Error {
   /** @param {string} message @param {string} code */
@@ -183,10 +187,52 @@ export function touchAuth(clientId) {
     })
 }
 
+/** Resolves once the async-loaded Google script is usable, or false if it never is. */
+async function gisWhenReady() {
+  if (gisReady()) return true
+  const deadline = Date.now() + GIS_WAIT_MS
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    if (gisReady()) return true
+  }
+  return false
+}
+
+/**
+ * Produces a usable token, silently re-establishing one when we have none.
+ *
+ * The token is deliberately memory-only, so every page reload starts without one.
+ * Without this, a reload greeted the user with a sign-in banner before the board had
+ * even tried to load. `prompt: ''` reuses the grant already given, so normally nothing
+ * is shown; if the browser blocks it for want of a user gesture, this fails as
+ * `needs_signin` and the banner's button takes over.
+ *
+ * Rate-limited by the same cooldown as touchAuth, so one failure cannot become one
+ * popup attempt per request.
+ */
+async function token(clientId) {
+  if (isConnected()) return accessToken
+  if (!clientId) throw new ApiError('Потрібен вхід у Google.', 'needs_signin')
+  if (renewing || Date.now() - lastRenewAt < RENEW_COOLDOWN_MS) {
+    throw new ApiError('Потрібен вхід у Google.', 'needs_signin')
+  }
+  if (!(await gisWhenReady())) {
+    throw new ApiError('Google-скрипт входу не завантажився. Перевірте з’єднання.', 'needs_signin')
+  }
+
+  renewing = true
+  lastRenewAt = Date.now()
+  try {
+    return await requestToken(clientId, false)
+  } finally {
+    renewing = false
+  }
+}
+
 /* -------------------------------------------------------------- transport ---- */
 
-async function call(url, init = {}) {
-  if (!isConnected()) throw new ApiError('Потрібен вхід у Google.', 'needs_signin')
+async function call(creds, url, init = {}) {
+  const bearer = await token(creds.clientId)
 
   const controller = typeof AbortController === 'undefined' ? null : new AbortController()
   const timer = controller ? setTimeout(() => controller.abort(), TIMEOUT_MS) : 0
@@ -196,7 +242,7 @@ async function call(url, init = {}) {
     res = await fetch(url, {
       ...init,
       signal: controller?.signal,
-      headers: { ...(init.headers || {}), Authorization: `Bearer ${accessToken}` },
+      headers: { ...(init.headers || {}), Authorization: `Bearer ${bearer}` },
     })
   } catch (err) {
     if (err?.name === 'AbortError') throw new ApiError('Сервер не відповідає. Спробуйте ще раз.', 'timeout')
@@ -364,6 +410,7 @@ function toRows(payload) {
 async function read(creds, tabs = TABS) {
   const ranges = tabs.map((t) => `ranges=${encodeURIComponent(t)}`).join('&')
   const body = await call(
+    creds,
     `${API_ROOT}/${encodeURIComponent(creds.spreadsheetId)}/values:batchGet` +
       `?${ranges}&valueRenderOption=UNFORMATTED_VALUE`,
   )
@@ -384,13 +431,15 @@ export async function fetchBoard(creds) {
   const { rowsByTab } = await read(creds)
   const meta = rowsToSettings(rowsByTab.meta)
 
-  // A blank colour cell becomes the palette default here rather than in five render
-  // paths; everything downstream may assume a status/priority has one.
+  // Defaults applied here rather than in five render paths; everything downstream may
+  // assume a status/priority has a colour and that the percent fields are numbers.
+  // rowsFromValues stringifies every cell, so the fractions arrive as text.
   const withColour = (rows) => rows.map((r) => (r.color ? r : { ...r, color: 'slate' }))
+  const withFraction = (rows, key) => rows.map((r) => ({ ...r, [key]: toFraction(r[key]) }))
 
   return {
-    tasks: rowsByTab.tasks,
-    statuses: withColour(rowsByTab.statuses),
+    tasks: withFraction(rowsByTab.tasks, 'progress_percent'),
+    statuses: withFraction(withColour(rowsByTab.statuses), 'start_percent'),
     categories: rowsByTab.categories,
     priorities: withColour(rowsByTab.priorities),
     owners: rowsByTab.owners,
@@ -446,7 +495,7 @@ export async function saveBoard(creds, payload) {
   ]
   const writing = [...changed, 'meta']
 
-  await call(`${API_ROOT}/${encodeURIComponent(creds.spreadsheetId)}/values:batchUpdate`, {
+  await call(creds, `${API_ROOT}/${encodeURIComponent(creds.spreadsheetId)}/values:batchUpdate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     // RAW, so Sheets stores "2026-01-01" as the string it is instead of reading it as
@@ -462,7 +511,7 @@ export async function saveBoard(creds, payload) {
 
   const stale = tailRangesToClear(current.heights, outgoing, writing)
   if (stale.length) {
-    await call(`${API_ROOT}/${encodeURIComponent(creds.spreadsheetId)}/values:batchClear`, {
+    await call(creds, `${API_ROOT}/${encodeURIComponent(creds.spreadsheetId)}/values:batchClear`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ranges: stale }),

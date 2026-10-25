@@ -12,7 +12,7 @@
  * BUMP `VERSION` whenever any precached file changes, or clients keep the old copy.
  */
 
-const VERSION = 'v4'
+const VERSION = 'v12'
 const CACHE = `taskapp-${VERSION}`
 
 const SHELL = [
@@ -34,6 +34,7 @@ const SHELL = [
   './src/ui/buttons.js',
   './src/ui/fields.js',
   './src/ui/board.js',
+  './src/ui/progress-bar.js',
   './src/ui/task-card.js',
   './src/ui/task-dialog.js',
   './src/ui/filter-bar.js',

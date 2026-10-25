@@ -13,17 +13,14 @@
 export const TABS = ['tasks', 'statuses', 'categories', 'priorities', 'owners', 'settings', 'meta']
 
 export const COLS = {
-  tasks: ['id', 'name', 'color', 'icon', 'status_id', 'category_id', 'priority_id', 'owner_id', 'due_date', 'notes'],
-  statuses: ['id', 'name', 'color', 'icon'],
+  tasks: ['id', 'name', 'color', 'icon', 'status_id', 'category_id', 'priority_id', 'owner_id', 'due_date', 'notes', 'progress_percent'],
+  statuses: ['id', 'name', 'color', 'icon', 'start_percent'],
   categories: ['id', 'name'],
   priorities: ['id', 'name', 'color'],
   owners: ['id', 'name'],
   settings: ['key', 'value'],
   meta: ['key', 'value'],
 }
-
-/** The six tabs the content hash covers — `meta` is excluded, it is bookkeeping. */
-export const HASHED_TABS = ['tasks', 'statuses', 'categories', 'priorities', 'owners', 'settings']
 
 /**
  * Tasks are stored in a deterministic order (due date first, blanks last, then name),

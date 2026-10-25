@@ -1,24 +1,26 @@
 import { append, el } from './dom.js'
 import { ICON, actionButton } from './buttons.js'
-import { colourField, field, iconField, textInput } from './fields.js'
+import { colourField, field, iconField, percentField, textInput } from './fields.js'
 
 /*
  * A generic reference-item editor: Categories/Owners need only a name; Priorities also
- * need a colour; Statuses need both a colour and an icon. One dialog, configured per
- * entity via independent withColor/withIcon flags, instead of near-duplicate forms.
+ * need a colour; Statuses need a colour, an icon and a start percent. One dialog,
+ * configured per entity via independent flags, instead of near-duplicate forms.
  *
  * @param {{ title: string,
- *           item: { id?: string, name?: string, color?: string, icon?: string },
+ *           item: { id?: string, name?: string, color?: string, icon?: string,
+ *                   start_percent?: number },
  *           isNew: boolean,
  *           withColor?: boolean,
  *           withIcon?: boolean,
+ *           withPercent?: boolean,
  *           iconChoices?: string[],
  *           onSave: (values: Object) => void,
  *           onDelete?: () => void,
  *           onClose?: () => void }} props
  * @returns {HTMLDialogElement}
  */
-export function refSheet({ title, item, isNew, withColor = false, withIcon = false, iconChoices = [], onSave, onDelete, onClose }) {
+export function refSheet({ title, item, isNew, withColor = false, withIcon = false, withPercent = false, iconChoices = [], onSave, onDelete, onClose }) {
   const dialog = /** @type {HTMLDialogElement} */ (el('dialog', 'sheet'))
   const form = el('form', 'sheet__form')
 
@@ -28,6 +30,7 @@ export function refSheet({ title, item, isNew, withColor = false, withIcon = fal
 
   const colour = withColor ? colourField(item.color ?? 'slate') : null
   const icon = withIcon ? iconField(item.icon ?? '', iconChoices) : null
+  const percent = withPercent ? percentField(item.start_percent ?? 0) : null
 
   const save = actionButton({ icon: ICON.save, label: 'Зберегти', kind: 'primary', type: 'submit' })
 
@@ -45,6 +48,7 @@ export function refSheet({ title, item, isNew, withColor = false, withIcon = fal
       name: name.value.trim(),
       ...(withColor ? { color: colour.value() } : {}),
       ...(withIcon ? { icon: icon.value() } : {}),
+      ...(withPercent ? { start_percent: percent.value() } : {}),
     })
     dialog.close()
   })
@@ -57,6 +61,7 @@ export function refSheet({ title, item, isNew, withColor = false, withIcon = fal
     field('Назва', name),
     withColor ? field('Колір', colour.node) : null,
     withIcon ? field('Емодзі', icon.node) : null,
+    withPercent ? field('Start %', percent.node) : null,
     append(
       el('div', 'sheet__actions'),
       save,

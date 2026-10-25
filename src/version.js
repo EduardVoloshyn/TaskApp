@@ -1,12 +1,12 @@
-export const VERSION = '2.0'
-export const RELEASED = '2026-10-24'
+export const VERSION = '2.2'
+export const RELEASED = '2026-10-25'
 
 /**
  * The data-model schema this build expects. Bump alongside `COLS` in
  * `src/sync/schema.js` every time the Task/Status/Category/Priority/Owner shape
  * changes — see CLAUDE.md's "Changing the data model" checklist.
  */
-export const REQUIRED_SCHEMA_VERSION = '3'
+export const REQUIRED_SCHEMA_VERSION = '4'
 
 /**
  * True when the Sheet is still on an older schema than this build expects — the new

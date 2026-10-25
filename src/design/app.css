@@ -234,10 +234,10 @@ body {
   opacity: 1;
 }
 
-/* Progress bar and owner share the left side of one line; the due date is pushed to
-   the far right of that same line regardless of which of the other two are present
-   (margin-left: auto on .task-card__due below does the pushing, not this container). */
-.task-card__status-row {
+/* Owner on the left; the due date is pushed to the far right of the same line whether
+   or not an owner is present (margin-left: auto on .task-card__due does the pushing,
+   not this container). */
+.task-card__meta-row {
   display: flex;
   align-items: center;
   gap: var(--gap-2);
@@ -246,25 +246,36 @@ body {
 
 .task-card__due { margin-left: auto; }
 
-.task-card__status-bar {
-  display: flex;
-  gap: 2px;
+/* The card's first line: the dialog's slider, shrunk and with no thumb. Thin, because
+   on a full board this repeats dozens of times — it is there to be scanned across
+   cards, not read on one.
+
+   The opaque base matters. The pale stage bands are the same palette tokens that tint
+   the card, so laid straight over it they vanished and the track looked like it just
+   stopped; `--surface` puts them back on neutral ground, and the groove over it gives
+   the uncovered stretch the same grey the dialog has. */
+.task-card__progress {
+  position: relative;
+  height: 6px;
+  margin-bottom: 0.3rem;
+  border-radius: 3px;
+  overflow: hidden;
+  background-color: var(--surface);
+  background-image: linear-gradient(var(--progress-groove), var(--progress-groove));
 }
 
-.task-card__status-box {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 2px;
-  background: transparent;
-  border: 1px solid var(--rule-strong);
-}
-
-/* Colour varies box-to-box (each is a different status), so it arrives as a nested
-   var() reference on a per-box custom property rather than a fixed set of modifier
-   classes — still only ever a token, never a raw value. */
-.task-card__status-box--filled {
-  background: var(--status-box-bg);
-  border-color: var(--status-box-bg);
+/* The outline is an overlay, not an inset shadow or a border on the strip itself.
+   An inset shadow paints beneath the element's own children, so every stage band drew
+   straight over it and the hairline survived only on the bare stretch before the first
+   stage. A generated box is the last child, so it paints above them all. It also costs
+   no height and inherits the radius, leaving the strip exactly 6px. */
+.task-card__progress::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--progress-edge);
+  border-radius: inherit;
+  pointer-events: none;
 }
 
 .task-card--slate  { --card-bg: var(--slate-bg);  --card-line: var(--slate-line);  --card-ink: var(--slate-ink); }
@@ -688,3 +699,117 @@ body {
   .app__bar { padding-top: max(var(--gap-3), env(safe-area-inset-top)); }
   .app__scroll { padding-bottom: env(safe-area-inset-bottom); }
 }
+
+/* ------------------------------------------------------------------ progress ---- */
+
+/*
+ * A task's progress, as a slider laid over the Status stages.
+ *
+ * Two things here are deliberate and easy to undo by accident:
+ *
+ *  - The painted track is inset by half the thumb on each side. A native range thumb's
+ *    centre stops half a thumb short of the track's true edges, so without the inset
+ *    the coloured fill drifts away from the thumb — by 7px here, and by far more if
+ *    the input's min/max are ever narrowed to the current stage instead of staying 0..100.
+ *  - The filled layer is a full-width copy of the segments revealed by `clip-path`,
+ *    not a resized one. Resizing would rescale the segments and the colour boundaries
+ *    would slide as the value changed.
+ */
+
+.progress { display: flex; flex-direction: column; gap: var(--gap-2); }
+
+.progress__caption {
+  text-align: center;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--ink-quiet);
+}
+.progress__stage { font-weight: 600; color: var(--stage-ink, var(--ink)); }
+.progress__value { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.progress__track { position: relative; height: 22px; }
+
+/* The band sits inside whatever box its caller provides — inset by half a thumb in
+   the dialog's slider, the full width on a card — so the layers just fill it. */
+.progress__band {
+  position: absolute;
+  top: 5px; bottom: 5px; left: 7px; right: 7px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--progress-groove);
+}
+
+.progress__segments {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+}
+.progress__segments--fill { background: none; }
+.progress__segments--fill { clip-path: inset(0 var(--progress-clip, 100%) 0 0); }
+
+.progress__seg { position: absolute; top: 0; bottom: 0; background: var(--seg-bg, var(--rule)); }
+.progress__segments--fill .progress__seg { background: var(--seg-fill, var(--rule-strong)); }
+
+.progress__range {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  background: transparent;
+  cursor: grab;
+}
+.progress__range:active { cursor: grabbing; }
+.progress__range:disabled { cursor: default; opacity: 0.55; }
+.progress__range::-webkit-slider-runnable-track { height: 22px; background: transparent; }
+.progress__range::-moz-range-track { height: 22px; background: transparent; }
+.progress__range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px; height: 22px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1.5px solid var(--ink-quiet);
+  box-shadow: 0 1px 3px rgb(34 37 42 / 22%);
+}
+.progress__range::-moz-range-thumb {
+  width: 14px; height: 22px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1.5px solid var(--ink-quiet);
+  box-shadow: 0 1px 3px rgb(34 37 42 / 22%);
+}
+.progress__range:focus-visible { outline: 2px solid var(--blue-ink); outline-offset: 3px; border-radius: 5px; }
+
+.progress__ticks { position: relative; height: 14px; margin: 0 7px; }
+.progress__tick {
+  position: absolute;
+  top: 0;
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.progress__tick--on { font-weight: 650; color: var(--stage-ink, var(--ink)); }
+
+/* The current stage's ink, inherited by both the caption and its tick. */
+.progress--slate  { --stage-ink: var(--slate-ink); }
+.progress--blue   { --stage-ink: var(--blue-ink); }
+.progress--red    { --stage-ink: var(--red-ink); }
+.progress--amber  { --stage-ink: var(--amber-ink); }
+.progress--green  { --stage-ink: var(--green-ink); }
+.progress--violet { --stage-ink: var(--violet-ink); }
+.progress--teal   { --stage-ink: var(--teal-ink); }
+.progress--rose   { --stage-ink: var(--rose-ink); }
+
+.progress__seg--slate  { --seg-bg: var(--slate-bg);  --seg-fill: var(--slate-fill); }
+.progress__seg--blue   { --seg-bg: var(--blue-bg);   --seg-fill: var(--blue-fill); }
+.progress__seg--red    { --seg-bg: var(--red-bg);    --seg-fill: var(--red-fill); }
+.progress__seg--amber  { --seg-bg: var(--amber-bg);  --seg-fill: var(--amber-fill); }
+.progress__seg--green  { --seg-bg: var(--green-bg);  --seg-fill: var(--green-fill); }
+.progress__seg--violet { --seg-bg: var(--violet-bg); --seg-fill: var(--violet-fill); }
+.progress__seg--teal   { --seg-bg: var(--teal-bg);   --seg-fill: var(--teal-fill); }
+.progress__seg--rose   { --seg-bg: var(--rose-bg);   --seg-fill: var(--rose-fill); }

@@ -40,9 +40,20 @@ const store = {
 const { root } = installDom({ store })
 await import('../src/app.js')
 
-const labels = () => root.findAll('app__button').map((b) => b.textContent)
+// app.js kicks off a board fetch on boot. The stub auth rejects it, but asynchronously
+// — let that settle before any assertion, or the sync status flips mid-suite and the
+// toolbar's locked/unlocked state changes under the tests.
+await new Promise((resolve) => setTimeout(resolve, 0))
+
+/*
+ * Scoped to the toolbar, not the whole tree. An error banner carries its own buttons
+ * (retry, sign in), so matching every app__button in the document made "the toolbar
+ * ends with ?" depend on whether a banner happened to be showing.
+ */
+const toolbarButtons = () => root.find('app__bar').findAll('app__button')
+const labels = () => toolbarButtons().map((b) => b.textContent)
 // Icon-only now, so presence is checked by its title, not visible text.
-const addButtonPresent = () => root.findAll('app__button').some((b) => b.title === 'Додати завдання')
+const addButtonPresent = () => toolbarButtons().some((b) => b.title === 'Додати завдання')
 
 test('the app boots and renders a toolbar and board rather than throwing', () => {
   ok(root.find('app__bar'), 'no toolbar — the setup card or an exception instead')
@@ -142,7 +153,8 @@ test('turning the completed toggle on reveals the completed task, collapsed', ()
   const card = root.findAll('task-card').find((c) => c.textContent.includes('Завершений звіт'))
   ok(card, 'completed task did not appear after toggling on')
   ok(card.className.includes('task-card--completed'))
-  eq(card.find('task-card__status-row'), null)
+  eq(card.find('task-card__meta-row'), null)
+  eq(card.find('task-card__progress'), null, 'a done card collapses to one line')
 })
 
 test('turning the completed toggle back off hides it again', () => {

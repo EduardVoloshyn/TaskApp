@@ -57,7 +57,7 @@ const REF_CONFIG = {
   categories: { title: 'Категорії', emptyHint: 'Поки немає жодної категорії.', withColor: false, withIcon: false },
   owners: { title: 'Виконавці', emptyHint: 'Поки немає жодного виконавця.', withColor: false, withIcon: false },
   priorities: { title: 'Пріоритети', emptyHint: 'Поки немає жодного пріоритету.', withColor: true, withIcon: false },
-  statuses: { title: 'Статуси', emptyHint: 'Поки немає жодного статусу.', withColor: true, withIcon: true },
+  statuses: { title: 'Статуси', emptyHint: 'Поки немає жодного статусу.', withColor: true, withIcon: true, withPercent: true },
 }
 
 const state = {
@@ -249,7 +249,14 @@ const flushSave = singleFlight(
 
     try {
       const result = await saveBoard(state.credentials, payload)
-      const snapshot = { ...state.snapshot, digests: result.digests }
+      // A save that wrote anything also stamped meta.schema_version, so reflect that
+      // locally — otherwise the "schema outdated" banner lingers until the next read
+      // and looks like the save failed to fix it.
+      const snapshot = {
+        ...state.snapshot,
+        digests: result.digests,
+        ...(result.written.length ? { sheetVersion: REQUIRED_SCHEMA_VERSION } : {}),
+      }
       saveSnapshot(snapshot)
       clearPending()
       setState({ snapshot, dirty: false, sync: { status: 'ok' } })
@@ -309,8 +316,11 @@ const refresh = singleFlight(async ({ background = false } = {}) => {
       setState({ sync: { status: 'idle' } })
       return
     }
+    // Keep the real code. Hardcoding 'network' here meant a needs_signin from the
+    // Sheets API rendered as a plain "Повторити", which cannot fix a missing token.
     const message = err instanceof ApiError ? err.message : 'Невідома помилка'
-    setState({ sync: { status: 'error', message, code: 'network' } })
+    const code = err instanceof ApiError ? err.code : 'network'
+    setState({ sync: { status: 'error', message, code } })
   }
 }, { onRerun: () => void refresh({ background: true }) })
 
@@ -445,6 +455,7 @@ function openRefSheet(kind, item, { isNew }) {
       isNew,
       withColor: config.withColor,
       withIcon: config.withIcon,
+      withPercent: Boolean(config.withPercent),
       iconChoices: ICON_CHOICES,
       onSave: (values) => {
         const existing = state.snapshot?.[kind] ?? []

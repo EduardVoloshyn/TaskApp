@@ -8,6 +8,7 @@ const { taskCard } = await import('../src/ui/task-card.js')
 const { refPanel } = await import('../src/ui/ref-panel.js')
 const { filterBar } = await import('../src/ui/filter-bar.js')
 const { taskDialog } = await import('../src/ui/task-dialog.js')
+const { refSheet } = await import('../src/ui/ref-sheet.js')
 const { createTask } = await import('../src/model/tasks.js')
 
 /* ---------------------------------------------------------------- task-card ---- */
@@ -26,31 +27,60 @@ test('taskCard renders the icon then a literal space then the name', () => {
   eq(heading.textContent, '📌 Buy milk')
 })
 
-test('taskCard renders no status bar when no statuses are defined', () => {
-  const task = createTask({ id: 't1', name: 'T' })
-  const node = taskCard(task, { statuses: [], todayIso: '2026-01-01' })
-  eq(node.find('task-card__status-bar'), null)
-})
-
-test('taskCard fills status boxes up to the task\'s current stage', () => {
+test('taskCard draws the progress strip as its first line', () => {
   const statuses = [
-    { id: 's1', name: 'To do', color: 'slate' },
-    { id: 's2', name: 'Doing', color: 'blue' },
-    { id: 's3', name: 'Done', color: 'green' },
+    { id: 's1', name: 'To do', color: 'slate', start_percent: 0 },
+    { id: 's2', name: 'Doing', color: 'blue', start_percent: 0.3 },
+    { id: 's3', name: 'Done', color: 'green', start_percent: 0.9 },
   ]
-  const task = createTask({ id: 't1', name: 'T', status_id: 's2' })
+  const task = createTask({ id: 't1', name: 'T', status_id: 's2', progress_percent: 0.45 })
   const node = taskCard(task, { statuses, todayIso: '2026-01-01' })
-  const boxes = node.findAll('task-card__status-box')
-  eq(boxes.length, 3, 'one box per defined status')
-  eq(boxes.filter((b) => b.className.includes('task-card__status-box--filled')).length, 2)
+
+  const strip = node.find('task-card__progress')
+  ok(strip, 'no progress strip on the card')
+  eq(node.children[0], strip, 'the strip must be the first line, above the heading')
+
+  const fill = strip.findAll('progress__segments').find((s) => s.className.includes('--fill'))
+  eq(fill.styleProps['--progress-clip'], '55%', 'the fill must match the task\u2019s own percent')
 })
 
-test('taskCard leaves every status box empty when the task has no status', () => {
-  const statuses = [{ id: 's1', name: 'To do', color: 'slate' }, { id: 's2', name: 'Done', color: 'green' }]
-  const task = createTask({ id: 't1', name: 'T' })
-  const node = taskCard(task, { statuses, todayIso: '2026-01-01' })
-  const filled = node.findAll('task-card__status-box--filled')
-  eq(filled.length, 0)
+test('the card strip places bands exactly where the dialog slider does', () => {
+  const statuses = [
+    { id: 's1', name: 'To do', color: 'slate', start_percent: 0.1 },
+    { id: 's2', name: 'Done', color: 'green', start_percent: 0.6 },
+  ]
+  const node = taskCard(createTask({ id: 't1', name: 'T', status_id: 's1' }), { statuses, todayIso: '2026-01-01' })
+  const segs = node.find('task-card__progress').findAll('progress__segments')[0].findAll('progress__seg')
+  eq(segs.map((s) => s.styleProps.left).join(','), '10%,60%')
+})
+
+test('the card strip shows the same two layers as the dialog slider', () => {
+  const statuses = [
+    { id: 's1', name: 'To do', color: 'green', start_percent: 0 },
+    { id: 's2', name: 'Done', color: 'green', start_percent: 0.6 },
+  ]
+  const card = taskCard(createTask({ id: 't1', name: 'T', status_id: 's1' }), { statuses, todayIso: '2026-01-01' })
+  eq(card.find('task-card__progress').findAll('progress__segments').length, 2, 'pale bands plus fill')
+
+  const dialog = taskDialog({
+    task: createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', status_id: 's1' }),
+    isNew: false, statuses, categories: refCategories, priorities: refPriorities, owners: [],
+    onSave: () => {},
+  })
+  eq(dialog.find('progress__band').findAll('progress__segments').length, 2, 'the two must match')
+})
+
+test('taskCard still draws a strip when no statuses are defined', () => {
+  const node = taskCard(createTask({ id: 't1', name: 'T' }), { statuses: [], todayIso: '2026-01-01' })
+  ok(node.find('task-card__progress'), 'an empty board should show an empty track, not nothing')
+  eq(node.find('task-card__progress').findAll('progress__segments')[0].findAll('progress__seg').length, 1)
+})
+
+test('a task with no progress shows an empty strip', () => {
+  const statuses = [{ id: 's1', name: 'To do', color: 'slate', start_percent: 0 }]
+  const node = taskCard(createTask({ id: 't1', name: 'T' }), { statuses, todayIso: '2026-01-01' })
+  const fill = node.find('task-card__progress').findAll('progress__segments').find((s) => s.className.includes('--fill'))
+  eq(fill.styleProps['--progress-clip'], '100%')
 })
 
 test('taskCard collapses to a single struck-through line when the task is completed', () => {
@@ -62,8 +92,8 @@ test('taskCard collapses to a single struck-through line when the task is comple
   const node = taskCard(task, { statuses, owner: { name: 'X' }, todayIso: '2026-01-01' })
   ok(node.className.includes('task-card--completed'), `got "${node.className}"`)
   ok(node.find('task-card__name').className.includes('task-card__name--done'))
-  eq(node.find('task-card__status-row'), null)
-  eq(node.find('task-card__status-bar'), null)
+  eq(node.find('task-card__meta-row'), null)
+  eq(node.find('task-card__progress'), null, 'a done card is one line — no strip either')
 })
 
 test('taskCard does not collapse a task on a non-last status', () => {
@@ -74,7 +104,7 @@ test('taskCard does not collapse a task on a non-last status', () => {
   const task = createTask({ id: 't1', name: 'T', status_id: 's1' })
   const node = taskCard(task, { statuses, todayIso: '2026-01-01' })
   eq(node.className.includes('task-card--completed'), false)
-  ok(node.find('task-card__status-bar'))
+  ok(node.find('task-card__progress'))
 })
 
 test('taskCard marks a past due date as overdue', () => {
@@ -330,4 +360,168 @@ test('taskDialog offers Duplicate for an existing task, not a new one', () => {
     onSave: () => {}, onDuplicate: () => {},
   })
   eq(fresh.findAll('app__button').some((b) => b.textContent.includes('Дублювати')), false, 'a new task has nothing to duplicate yet')
+})
+
+/* ------------------------------------------------------------------ progress ---- */
+
+const refStages = [
+  { id: 's1', name: 'Взято в роботу', start_percent: 0 },
+  { id: 's2', name: 'В процессі', start_percent: 0.25 },
+  { id: 's3', name: 'Завершено', start_percent: 0.9 },
+]
+
+const slider = (dialog) => dialog.find('progress__range')
+const caption = (dialog) => dialog.find('progress__caption').textContent
+const fillSegments = (dialog) => dialog.findAll('progress__segments').find((n) => n.className.includes('--fill'))
+
+const openTask = (task, onSave = () => {}) =>
+  taskDialog({
+    task, isNew: false,
+    statuses: refStages, categories: refCategories, priorities: refPriorities, owners: [],
+    onSave,
+  })
+
+const drag = (dialog, percent) => {
+  const input = slider(dialog)
+  input.value = String(percent)
+  input.dispatch('input', {})
+  return input
+}
+
+test('the progress caption names the stage and the whole percent', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', status_id: 's2', progress_percent: 0.4 })
+  const text = caption(openTask(task))
+  ok(text.includes('В процессі'), `caption was "${text}"`)
+  ok(text.includes('40 %'), `caption was "${text}"`)
+})
+
+test('the slider spans the whole 0..100, not just the stage', () => {
+  // Narrowing min/max to the stage is the bug that made the thumb drift off the fill:
+  // the thumb would cross the full track while the fill only crossed part of the scale.
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', status_id: 's2' })
+  const input = slider(openTask(task))
+  eq(input.min, '0')
+  eq(input.max, '100')
+})
+
+test('dragging inside the stage is kept as-is', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', status_id: 's2' })
+  const dialog = openTask(task)
+  drag(dialog, 60)
+  ok(caption(dialog).includes('60 %'), caption(dialog))
+})
+
+test('dragging past the next stage clamps to one below it', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', status_id: 's2' })
+  const dialog = openTask(task)
+  // s3 starts at 90, so В процессі tops out at 89.
+  eq(drag(dialog, 99).value, '89')
+  ok(caption(dialog).includes('89 %'), caption(dialog))
+})
+
+test('dragging below the stage start clamps up to it', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', status_id: 's2' })
+  eq(drag(openTask(task), 3).value, '25')
+})
+
+test('only the last stage can reach 100', () => {
+  const last = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', status_id: 's3' })
+  eq(drag(openTask(last), 100).value, '100')
+})
+
+test('changing status snaps progress to that stage start', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', status_id: 's1' })
+  const dialog = openTask(task)
+  eq(slider(dialog).value, '0')
+
+  const status = dialog.findAll('sheet__select')[0]
+  status.value = 's2'
+  status.dispatch('change', {})
+
+  eq(slider(dialog).value, '25')
+  ok(caption(dialog).includes('В процессі'), caption(dialog))
+})
+
+test('the fill is clipped, not resized, so segment boundaries hold still', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', status_id: 's2', progress_percent: 0.4 })
+  const dialog = openTask(task)
+  eq(fillSegments(dialog).styleProps['--progress-clip'], '60%')
+  drag(dialog, 70)
+  eq(fillSegments(dialog).styleProps['--progress-clip'], '30%')
+})
+
+test('one segment per stage, placed at the percent it starts on', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', status_id: 's1' })
+  const segs = openTask(task).findAll('progress__segments')[0].findAll('progress__seg')
+  // refStages start at 0 / 25 / 90.
+  eq(segs.map((s) => s.styleProps.left).join(','), '0%,25%,90%')
+  eq(segs.map((s) => s.styleProps.width).join(','), 'calc(25% - 2px),calc(65% - 2px),calc(10% - 2px)')
+})
+
+test('a board whose first stage starts above zero is not shifted left', () => {
+  // The flex layout packed from the left and ignored the first start, so every band
+  // sat 10 points early and the track ended 10 points short.
+  const late = [
+    { id: 'a', name: 'А', color: 'amber', start_percent: 0.1 },
+    { id: 'b', name: 'Б', color: 'green', start_percent: 0.2 },
+  ]
+  const dialog = taskDialog({
+    task: createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', status_id: 'a' }),
+    isNew: false, statuses: late, categories: refCategories, priorities: refPriorities, owners: [],
+    onSave: () => {},
+  })
+  const segs = dialog.findAll('progress__segments')[0].findAll('progress__seg')
+  eq(segs[0].styleProps.left, '10%', 'the first band must start where its stage does')
+  eq(segs[1].styleProps.width, 'calc(80% - 2px)', 'the last band must run to 100')
+})
+
+test('a zero-width stage draws no band', () => {
+  const touching = [
+    { id: 'a', name: 'А', color: 'amber', start_percent: 0.5 },
+    { id: 'b', name: 'Б', color: 'green', start_percent: 0.5 },
+  ]
+  const dialog = taskDialog({
+    task: createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', status_id: 'a' }),
+    isNew: false, statuses: touching, categories: refCategories, priorities: refPriorities, owners: [],
+    onSave: () => {},
+  })
+  eq(dialog.findAll('progress__segments')[0].findAll('progress__seg').length, 1)
+})
+
+test('the progress field saves back as a fraction', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1', status_id: 's2' })
+  let saved = null
+  const dialog = openTask(task, (values) => { saved = values })
+  drag(dialog, 55)
+  dialog.find('sheet__form').dispatch('submit', { preventDefault: () => {} })
+  eq(saved.progress_percent, 0.55)
+})
+
+test('a task with no status gets the full range and says so', () => {
+  const task = createTask({ id: 't1', name: 'T', category_id: 'c1', priority_id: 'p1' })
+  const dialog = openTask(task)
+  ok(caption(dialog).includes('без статусу'), caption(dialog))
+  eq(drag(dialog, 97).value, '97', 'nothing bounds a task that is in no stage')
+})
+
+test('refSheet offers Start % for statuses and returns it as a fraction', () => {
+  let saved = null
+  const sheet = refSheet({
+    title: 'Статус', item: { id: 's1', name: 'В процессі', start_percent: 0.25 },
+    isNew: false, withColor: true, withIcon: true, withPercent: true, iconChoices: [],
+    onSave: (values) => { saved = values },
+  })
+  const input = sheet.find('percent-input')
+  eq(input.value, '25', 'the stored fraction should display as a whole percent')
+
+  input.value = '60'
+  sheet.find('sheet__form').dispatch('submit', { preventDefault: () => {} })
+  eq(saved.start_percent, 0.6)
+})
+
+test('refSheet omits Start % for dictionaries that have no stages', () => {
+  const sheet = refSheet({
+    title: 'Категорія', item: { id: 'c1', name: 'Робота' }, isNew: false, onSave: () => {},
+  })
+  eq(sheet.find('percent-input'), null, 'only stages carry a start percent')
 })
