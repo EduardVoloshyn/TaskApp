@@ -131,7 +131,7 @@ function requestToken(clientId) {
 
     client.callback = (response) => {
       if (response.error || !response.access_token) {
-        reject(new ApiError('Потрібен вхід у Google.', 'needs_signin'))
+        reject(authError(response.error))
         return
       }
       accessToken = response.access_token
@@ -139,14 +139,49 @@ function requestToken(clientId) {
       expiresAt = Date.now() + (Number(response.expires_in || 3600) - 60) * 1000
       resolve(accessToken)
     }
-    client.error_callback = () => reject(new ApiError('Потрібен вхід у Google.', 'needs_signin'))
+    client.error_callback = (err) => reject(authError(err?.type))
 
     try {
       client.requestAccessToken({ prompt: '' })
-    } catch {
-      reject(new ApiError('Потрібен вхід у Google.', 'needs_signin'))
+    } catch (err) {
+      reject(authError(err?.message))
     }
   })
+}
+
+/**
+ * Google's own reason for refusing, turned into something actionable.
+ *
+ * Every auth failure used to throw one string, which made four unrelated problems
+ * look identical: an account that is not permitted, an origin missing from the OAuth
+ * client, a popup the browser blocked, and the Google script never loading. Telling
+ * them apart meant reading raw OAuth parameters off Google's error page.
+ *
+ * `access_denied` deliberately does NOT get code `needs_signin`: signing in again
+ * cannot fix it, and offering that button would send the user in a circle.
+ *
+ * @param {string} [reason] Google's error string, where it gave one
+ */
+function authError(reason) {
+  if (reason === 'access_denied') {
+    return new ApiError(
+      'Google не дозволив доступ цьому акаунту. Додайте його в Test users у Google Cloud ' +
+        '(console.cloud.google.com/auth/audience) і поділіться таблицею з ним як Редактор.',
+      'access_denied',
+    )
+  }
+
+  // Closing the popup is a decision, not a fault; a blocked one just needs a click.
+  if (reason === 'popup_closed_by_user' || reason === 'popup_failed_to_open') {
+    return new ApiError('Потрібен вхід у Google.', 'needs_signin')
+  }
+
+  // Anything unrecognised keeps Google's wording, so it is at least searchable —
+  // same approach as the Sheets 403 below.
+  return new ApiError(
+    reason ? `Потрібен вхід у Google. (${reason})` : 'Потрібен вхід у Google.',
+    'needs_signin',
+  )
 }
 
 /**

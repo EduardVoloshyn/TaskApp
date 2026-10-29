@@ -33,6 +33,9 @@ const sheet = () => ({
 let calls = []
 let tabs = sheet()
 let prompts = []
+// Set to make the stubbed Google refuse, the way it does for a real account that
+// is not on the Test users list.
+let authResponse = null
 
 /*
  * Installed per test rather than at import time: these are global, and the other
@@ -42,6 +45,7 @@ function install() {
   calls = []
   tabs = sheet()
   prompts = []
+  authResponse = null
 
   globalThis.TextEncoder = class {
     encode(text) {
@@ -69,7 +73,8 @@ function install() {
           ...config,
           requestAccessToken(options) {
             prompts.push(options?.prompt)
-            this.callback({ access_token: 'test-token', expires_in: 3600 })
+            if (authResponse) this.callback(authResponse)
+            else this.callback({ access_token: 'test-token', expires_in: 3600 })
           },
         }),
         revoke: () => {},
@@ -199,4 +204,37 @@ test('signing in never forces the consent screen', async () => {
   // `prompt: 'consent'` re-asks for permission already granted, and the token is
   // memory-only — so every reload would show the grant window again.
   eq(prompts.at(-1), '', `asked with prompt "${prompts.at(-1)}"`)
+})
+
+test('an account Google refuses is told why, and not offered a pointless re-login', async () => {
+  install()
+  authResponse = { error: 'access_denied' }
+
+  let failure = null
+  try {
+    await connect(CREDS.clientId)
+  } catch (err) {
+    failure = err
+  }
+
+  ok(failure, 'a refused grant must reject, not resolve')
+  // Not needs_signin: signing in again with the same account fails identically, so the
+  // banner must offer "another account" instead.
+  eq(failure.code, 'access_denied')
+  ok(failure.message.includes('Test users'), `message was "${failure.message}"`)
+})
+
+test("an unrecognised refusal keeps Google's own wording", async () => {
+  install()
+  authResponse = { error: 'some_future_reason' }
+
+  let failure = null
+  try {
+    await connect(CREDS.clientId)
+  } catch (err) {
+    failure = err
+  }
+
+  eq(failure.code, 'needs_signin', 'unknown reasons stay retryable')
+  ok(failure.message.includes('some_future_reason'), `swallowed it: "${failure.message}"`)
 })

@@ -187,8 +187,11 @@ async function signInToGoogle() {
     if (state.dirty) await flushSave().catch(() => {})
     else void refresh()
   } catch (err) {
+    // Keep the real code: hardcoding needs_signin here would offer a sign-in button
+    // for access_denied, which is the one case where signing in again cannot help.
     const message = err instanceof ApiError ? err.message : 'Не вдалося увійти в Google'
-    setState({ sync: { status: 'error', message, code: 'needs_signin' } })
+    const code = err instanceof ApiError ? err.code : 'needs_signin'
+    setState({ sync: { status: 'error', message, code } })
   }
 }
 
@@ -813,15 +816,17 @@ function errorNotice() {
       el('span', 'app__spacer'),
       button('Відкинути мої зміни', 'Взяти версію з таблиці', () => void discardLocal()),
     )
-  } else if (state.sync.code === 'needs_signin' || state.sync.code === 'forbidden') {
-    // The OAuth token expired and could not be renewed without a popup, which only a
-    // real click is allowed to open. Nothing is wrong with the data — it just needs a tap.
+  } else if (['needs_signin', 'forbidden', 'access_denied'].includes(state.sync.code)) {
+    // needs_signin: the token expired and could not be renewed without a popup, which
+    // only a real click may open — a tap fixes it. The other two mean this account is
+    // not allowed, so the only move that helps is a different one.
+    const blocked = state.sync.code !== 'needs_signin'
     append(
       notice,
       el('span', 'app__spacer'),
       button(
-        state.sync.code === 'forbidden' ? 'Інший акаунт' : 'Увійти в Google',
-        'Відновити доступ до таблиці',
+        blocked ? 'Інший акаунт' : 'Увійти в Google',
+        blocked ? 'Увійти іншим акаунтом' : 'Відновити доступ до таблиці',
         () => void signInToGoogle(),
       ),
     )
